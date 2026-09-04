@@ -71,8 +71,23 @@ Two on-chain settlements on Base mainnet (Sep 1, 2026):
 
 PAY_TO: `0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab`
 
+## eBPF Kernel-Level Security
+
+### XDP Threat Filter (LIVE on production since Aug 28, 2026)
+- eBPF XDP program on eth0 drops packets from banned IPs **before the TCP stack** (~5-20µs)
+- Silicon DNA's 14-layer bot detection feeds banned IPs into the BPF map every 5s
+- Generic mode on virtio_net (VPS); native mode on bare-metal achieves <1µs
+
+### LSM Agent Guard (compiled, requires kernel boot param)
+- BPF LSM hooks restrict AI agent processes at the kernel level
+- Blocks `execve` (no spawning new processes)
+- Network connections restricted to ports 443 and 8545 (HTTPS + Ethereum RPC)
+
+See [ebpf/README.md](ebpf/README.md) for details.
+
 ## Security
 
+- **eBPF XDP** kernel-speed threat response (live on production)
 - **ML-KEM-768** (NIST FIPS 203) post-quantum key exchange per WebSocket connection
 - **BLAKE3 + Ed25519** integrity signing on all telemetry
 - **14-layer bot detection**: CPU jitter, Spearman correlation, Argon2 PoW, Frankenstein header analysis, Sybil clustering, Privacy Pass tokens, drift-adaptive thresholds

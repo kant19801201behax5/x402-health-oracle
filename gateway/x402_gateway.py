@@ -407,6 +407,9 @@ def _read_latest():
         pass
     return metrics, health, eth_sig
 
+_L1_CHAINS = {"casper"}
+_L1_P99_THRESHOLD = 2000
+
 def _recommendation(metrics, health):
     worst = "SAFE_TO_EXECUTE"
     h = health or {}
@@ -418,11 +421,14 @@ def _recommendation(metrics, health):
             rev = h.get("arb_revert_ratio", 0)
         elif chain == "base":
             rev = h.get("base_revert_ratio", 0)
-        if stall or p99 >= 5000:
+        high_thresh = _L1_P99_THRESHOLD if chain in _L1_CHAINS else 500
+        elevated_thresh = 1000 if chain in _L1_CHAINS else 200
+        stall_thresh = 10000 if chain in _L1_CHAINS else 5000
+        if stall or p99 >= stall_thresh:
             return "STALL_DETECTED"
-        if p99 > 500 or rev > 0.30:
+        if p99 > high_thresh or rev > 0.30:
             worst = "HIGH_RISK"
-        elif (p99 > 200 or rev > 0.10) and worst == "SAFE_TO_EXECUTE":
+        elif (p99 > elevated_thresh or rev > 0.10) and worst == "SAFE_TO_EXECUTE":
             worst = "ELEVATED_RISK"
     return worst
 
