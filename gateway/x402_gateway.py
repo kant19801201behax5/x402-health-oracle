@@ -16,6 +16,8 @@ from x402.http import HTTPFacilitatorClient, FacilitatorConfig, PaymentOption
 from x402.http.types import RouteConfig
 from x402.server import x402ResourceServer
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
+from x402.mechanisms.evm.default_assets import DEFAULT_ASSETS as _EVM_ASSETS
+_EVM_ASSETS["hedera:testnet"] = [{"asset": "0.0.456858", "name": "HBAR", "version": "1", "decimals": 8, "symbol": "HBAR"}]
 from x402.extensions.bazaar import declare_discovery_extension, OutputConfig
 
 FEED_PATH = "/opt/phoenix_zero/data/feed.jsonl"
@@ -89,6 +91,8 @@ if HEDERA_PAY_TO:
 
 _server = x402ResourceServer(_facilitators)
 _server.register(NETWORK, ExactEvmServerScheme())
+if HEDERA_PAY_TO:
+    _server.register(HEDERA_NETWORK, ExactEvmServerScheme())
 
 _pay = [PaymentOption(scheme="exact", price=PRICE, network=NETWORK, pay_to=PAY_TO)]
 if HEDERA_PAY_TO:
