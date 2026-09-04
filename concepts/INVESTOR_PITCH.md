@@ -1,8 +1,11 @@
-# Autonomous Security Infrastructure
+# Dynamic Task-Scoped Agentic IAM via eBPF
 
 ## The Problem
 
-AI agents are entering the blockchain economy. They trade, bridge, and execute across L2 chains — but they have no way to verify whether the infrastructure they depend on is safe. Meanwhile, the infrastructure has no way to distinguish a legitimate agent from a malicious bot at the kernel level.
+AI agents are entering the blockchain economy. They hold signing keys, execute transactions, and bridge funds autonomously across L2 chains. Two critical gaps exist:
+
+1. **No reliable chain health signal** — agents can't verify whether the infrastructure they depend on is safe before committing funds.
+2. **No kernel-level IAM for agents** — when an agent process is compromised, traditional RBAC (per-user, not per-task) can't prevent lateral movement. The 2026 agentic IAM gap is the #1 unsolved problem in autonomous AI infrastructure.
 
 ## What We Built
 
@@ -34,11 +37,11 @@ Three layers, each deployed:
 
 ## Revenue Model
 
-**x402 micropayments:** Every API query costs $0.01 USDC on Base. No subscriptions, no API keys for basic access — pure per-query monetization via the x402 HTTP 402 protocol.
+**x402 micropayments:** Every API query costs $0.01 USDC. No subscriptions, no API keys for basic access — pure per-query monetization via the x402 HTTP 402 protocol.
 
 - 7 paid endpoints (health, safe, price, chains, classify, health-proof)
-- Coinbase CDP facilitator verifies payment on-chain
-- First revenue: $0.02 USDC (Sep 1, 2026)
+- **Dual payment rails:** Coinbase CDP (Base mainnet) + Blocky402 (Hedera testnet)
+- First revenue: $0.02 USDC (Sep 1, 2026) — two verified on-chain settlements on Base
 
 **Unit economics at scale:**
 | Queries/day | Daily Revenue | Annual Revenue |
@@ -65,10 +68,23 @@ Three layers, each deployed:
 
 ## Ecosystem Fit
 
+- **Hedera:** x402 payments via Blocky402 facilitator, Hedera AI & Agentic Payments track
 - **EigenLayer AVS:** health proofs as operator validation
 - **Chainlink DON:** cross-oracle health data feed
 - **DePIN:** node uptime verification for reward distribution
 - **x402 ecosystem:** reference implementation for AI-agent commerce
+
+## Roadmap
+
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 0 | x402 gateway + 12-chain health oracle | **Live** |
+| 1 | eBPF XDP threat filter | **Live since Aug 28** |
+| 2 | eBPF LSM agentic IAM | Compiled, kernel-ready |
+| 3 | Hedera payment rail (Blocky402) | **Integrated** |
+| 4 | TEE coprocessor (Gramine/SGX) | Design |
+| 5 | The Graph subgraph for health proofs | Design |
+| 6 | risc0 zkVM full ZK proofs | Concept |
 
 ## The Team
 
