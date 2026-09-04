@@ -6,6 +6,7 @@ import { createMlKem768 } from 'mlkem';
 
 import { Worker } from 'node:worker_threads';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'path';
 import { performance } from 'perf_hooks';
@@ -33,6 +34,18 @@ import {
   pqcSessionSignal, automationSignal, frankensteinSignal,
   rhythmTrustSignal, classifierSignal, walletSybilSignal,
 } from './src/services/trustSignals';
+
+function isXdpAttached(): boolean {
+  try {
+    return execSync('ip link show eth0', { encoding: 'utf8' }).includes('xdp');
+  } catch { return false; }
+}
+
+function isLsmLoaded(): boolean {
+  try {
+    return execSync('cat /sys/kernel/security/lsm', { encoding: 'utf8' }).includes('bpf');
+  } catch { return false; }
+}
 
 async function startServer() {
   const app = express();
@@ -68,19 +81,19 @@ async function startServer() {
   let globalDroppedCount = 0;
   let sniperArmed = false;
 
-  // Phase 58.0: Live rules pulled from JARVIS every 60s (sigma2, rho, argon2 thresholds)
+  // Phase 58.0: Live rules pulled from agent every 60s (sigma2, rho, argon2 thresholds)
   let liveRules = { sigma2: 2.0, rho: 0.3, argon2: { time: 3, memory: 65536, parallelism: 4 } };
-  const JARVIS_URL = process.env.JARVIS_URL || '';
-  if (JARVIS_URL) {
+  const AGENT_URL = process.env.AGENT_URL || '';
+  if (AGENT_URL) {
     const syncRules = () => {
-      fetch(`${JARVIS_URL}/api/admin/rules`, {
-        headers: process.env.JARVIS_TOKEN ? { Authorization: 'Bearer ' + process.env.JARVIS_TOKEN } : {},
+      fetch(`${AGENT_URL}/api/admin/rules`, {
+        headers: process.env.AGENT_TOKEN ? { Authorization: 'Bearer ' + process.env.AGENT_TOKEN } : {},
       })
         .then(r => r.json())
         .then((data: any) => {
           if (data?.rules) {
-            // σ² is owned locally by the drift-adaptive model (P2.7); JARVIS still
-            // provides rho + argon2. Ignoring a JARVIS-sent sigma2 avoids the two
+            // σ² is owned locally by the drift-adaptive model (P2.7); agent still
+            // provides rho + argon2. Ignoring a agent-sent sigma2 avoids the two
             // calibrators fighting over the same value.
             const { sigma2: _driftOwned, ...rest } = data.rules;
             liveRules = { ...liveRules, ...rest };
@@ -967,9 +980,9 @@ async function startServer() {
   let phoenixRttEma = 0;
   let phoenixThreatScore = 0;
 
-  // ── /api/silicon-metrics (current snapshot for JARVIS FastAPI) ────────────
+  // ── /api/silicon-metrics (current snapshot for agent FastAPI) ────────────
   // Returns the same 5 values siliconDnaLink.ts streams over WS, as plain JSON.
-  // JARVIS FastAPI calls this when assembling episode.state.vector[485-489].
+  // agent FastAPI calls this when assembling episode.state.vector[485-489].
   app.get('/api/silicon-metrics', (_req, res) => {
     const passed  = globalPassedCount;
     const dropped = globalDroppedCount;
@@ -1030,7 +1043,7 @@ async function startServer() {
 
   // ── Phoenix Zero eBPF event ingestion ────────────────────────────────────
   // Accepts kernel-level events from phoenix_zero_sensor.py (localhost only).
-  // Processes events locally; optionally forwards to JARVIS (fire-and-forget).
+  // Processes events locally; optionally forwards to agent (fire-and-forget).
   app.post('/api/agent/interact', express.json({ limit: '1mb' }), (req, res) => {
     const remoteIp = req.socket.remoteAddress ?? '';
     const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
@@ -1072,15 +1085,15 @@ async function startServer() {
 
     res.json({ ok: true, processed: rawEvents.length, threat_score: phoenixThreatScore });
 
-    // Optional JARVIS forward (fire-and-forget — never blocks sensor)
-    const jarvisUrl = process.env.JARVIS_URL;
-    if (jarvisUrl) {
-      fetch(`${jarvisUrl}/api/agent/interact`, {
+    // Optional agent forward (fire-and-forget — never blocks sensor)
+    const agentUrl = process.env.AGENT_URL;
+    if (agentUrl) {
+      fetch(`${agentUrl}/api/agent/interact`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(process.env.JARVIS_TOKEN ? { 'Authorization': 'Bearer ' + process.env.JARVIS_TOKEN } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(process.env.AGENT_TOKEN ? { 'Authorization': 'Bearer ' + process.env.AGENT_TOKEN } : {}) },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(5_000),
-      }).catch((err: Error) => console.warn(`[Phoenix→JARVIS] ${err.message}`));
+      }).catch((err: Error) => console.warn(`[Phoenix→agent] ${err.message}`));
     }
   });
 
@@ -1130,8 +1143,8 @@ async function startServer() {
         layers_passed: proof.layersBitmap.toString(2).padStart(8, '0'),
         trust_ratio: total > 0 ? Math.round((globalPassedCount / total) * 1000) / 1000 : 1.0,
         ebpf: {
-          xdp_shield: fs.existsSync('/sys/fs/bpf/xdp_threat_filter'),
-          lsm_guard: fs.existsSync('/sys/fs/bpf/lsm_agent_guard'),
+          xdp_shield: isXdpAttached(),
+          lsm_guard: isLsmLoaded(),
           banned_ips: bannedIPs.size,
         },
       },
@@ -1234,8 +1247,8 @@ async function startServer() {
       pay_to: '0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab',
       free_endpoints: ['/api/health', '/api/health-proof', '/api/silicon-metrics'],
       security: {
-        ebpf_xdp: fs.existsSync('/sys/fs/bpf/xdp_threat_filter'),
-        ebpf_lsm: fs.existsSync('/sys/fs/bpf/lsm_agent_guard'),
+        ebpf_xdp: isXdpAttached(),
+        ebpf_lsm: isLsmLoaded(),
         pqc: 'ML-KEM-768',
         zk_proofs: 'HMAC-SHA256 commitment',
         layers: 14,
@@ -1260,8 +1273,8 @@ async function startServer() {
     });
   });
 
-  // Phase 57.8: Push Silicon DNA metrics to JARVIS every 60s
-  if (JARVIS_URL) {
+  // Phase 57.8: Push Silicon DNA metrics to agent every 60s
+  if (AGENT_URL) {
     setInterval(() => {
       const total = globalPassedCount + globalDroppedCount;
       const trust = total > 0 ? globalPassedCount / total : 1.0;
@@ -1270,13 +1283,13 @@ async function startServer() {
       const entropy_norm  = (currentMetrics.entropy ?? 0) / 8;
       const autocorr_norm = ((currentMetrics.autocorr ?? 0) + 1) / 2;
       const bot_drop_rate = total > 0 ? globalDroppedCount / total : 0;
-      fetch(`${JARVIS_URL}/api/silicon-dna`, {
+      fetch(`${AGENT_URL}/api/silicon-dna`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(process.env.JARVIS_TOKEN ? { 'Authorization': 'Bearer ' + process.env.JARVIS_TOKEN } : {}) },
-        // ja3 kept for JARVIS schema back-compat but now carries the REAL TLS risk
+        headers: { 'Content-Type': 'application/json', ...(process.env.AGENT_TOKEN ? { 'Authorization': 'Bearer ' + process.env.AGENT_TOKEN } : {}) },
+        // ja3 kept for agent schema back-compat but now carries the REAL TLS risk
         // (from a JA4 front) when available; 0.5 is an honest "unknown", not a fake.
         body: JSON.stringify({ jitter, sniper, ja3: lastTlsRisk ?? 0.5, ja4: lastJa4, behavioral: 0.5, trust, entropy_norm, autocorr_norm, bot_drop_rate }),
-      }).catch((e: Error) => console.warn(`[DNA→JARVIS] ${e.message}`));
+      }).catch((e: Error) => console.warn(`[DNA→agent] ${e.message}`));
     }, 60_000);
   }
 

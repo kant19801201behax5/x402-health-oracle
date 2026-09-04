@@ -37,7 +37,7 @@ except Exception as _ae:
 # event-loop/GIL jitter. Runs unprivileged via file capabilities (cap_bpf,
 # cap_perfmon, cap_sys_admin, cap_sys_ptrace, cap_dac_read_search — set once via
 # setcap, no root/SUID). Autonomous sensor: emits timing only, no payload
-# content, no Moltbot schema dependency. Soft: if the binary/caps are missing,
+# content, no external schema dependency. Soft: if the binary/caps are missing,
 # the rest of the probe is entirely unaffected.
 EBPF_LOADER_BIN = os.environ.get('PHOENIX_EBPF_LOADER', '/opt/phoenix_zero/ebpf/phoenix_rtt_loader')
 EBPF_OBJ_PATH   = os.environ.get('PHOENIX_EBPF_OBJ',    '/opt/phoenix_zero/ebpf/phoenix_rtt.bpf.o')
