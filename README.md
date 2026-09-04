@@ -114,6 +114,44 @@ PAY_TO: `0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab`
 - **14-layer bot detection** — CPU jitter, Spearman correlation, Argon2 PoW, Frankenstein header analysis, Sybil clustering, Privacy Pass tokens
 - **Isolation Forest** anomaly scoring (numpy-only)
 
+## Quick Start
+
+**Try the live API** (returns 402 — payment required):
+```bash
+curl -i https://rtt.phoenix-ai.work/api/v1/health
+```
+
+**Free health endpoint** (no payment):
+```bash
+curl https://rtt.phoenix-ai.work/api/health
+```
+
+**Run locally:**
+```bash
+# x402 gateway (Python)
+cd gateway
+pip install -r requirements.txt
+cp ../.env.example .env   # edit with your CDP/Hedera keys
+uvicorn x402_gateway:app --port 3002
+
+# Silicon DNA server (TypeScript)
+cd gateway
+npm install
+npx tsx server.ts
+
+# Multi-chain probe (Python)
+cd probe
+pip install -r requirements.txt
+python multi_chain_probe.py
+```
+
+**Deploy eBPF** (requires Linux kernel 5.15+ with BTF):
+```bash
+cd ebpf
+python xdp_loader.py --attach    # XDP threat filter on eth0
+python lsm_loader.py --pid $PID  # LSM sandbox for agent process
+```
+
 ## Continuity
 
 This project extends 6+ months of production work. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md) for full before/during table.
