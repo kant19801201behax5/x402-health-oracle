@@ -67,26 +67,32 @@ def _cdp_create_headers() -> dict[str, dict[str, str]]:
 _cdp_key_id = os.environ.get("CDP_API_KEY_ID", "")
 _cdp_secret  = os.environ.get("CDP_API_SECRET", "")
 
+HEDERA_NETWORK = "hedera:testnet"
+HEDERA_PAY_TO  = os.environ.get("HEDERA_PAY_TO", "")
+BLOCKY402_URL  = "https://api.testnet.blocky402.com"
+
+_facilitators = []
+
 if _cdp_key_id and _cdp_secret:
-    # Production: Coinbase CDP facilitator, Base mainnet
     _cdp_auth = CreateHeadersAuthProvider(_cdp_create_headers)
-    _server = x402ResourceServer(
-        HTTPFacilitatorClient(FacilitatorConfig(
-            url="https://api.cdp.coinbase.com/platform/v2/x402",
-            auth_provider=_cdp_auth,
-        ))
-    )
-    _server.register(NETWORK, ExactEvmServerScheme())
+    _facilitators.append(HTTPFacilitatorClient(FacilitatorConfig(
+        url="https://api.cdp.coinbase.com/platform/v2/x402",
+        auth_provider=_cdp_auth,
+    )))
 else:
-    # Fallback: public facilitator, Base Sepolia testnet (keeps 402 alive during key rotation)
     _FALLBACK_NETWORK = "eip155:84532"
-    _server = x402ResourceServer(
-        HTTPFacilitatorClient(FacilitatorConfig(url="https://x402.org/facilitator"))
-    )
-    _server.register(_FALLBACK_NETWORK, ExactEvmServerScheme())
+    _facilitators.append(HTTPFacilitatorClient(FacilitatorConfig(url="https://x402.org/facilitator")))
     NETWORK = _FALLBACK_NETWORK
 
+if HEDERA_PAY_TO:
+    _facilitators.append(HTTPFacilitatorClient(FacilitatorConfig(url=BLOCKY402_URL)))
+
+_server = x402ResourceServer(_facilitators)
+_server.register(NETWORK, ExactEvmServerScheme())
+
 _pay = [PaymentOption(scheme="exact", price=PRICE, network=NETWORK, pay_to=PAY_TO)]
+if HEDERA_PAY_TO:
+    _pay.append(PaymentOption(scheme="exact", price=PRICE, network=HEDERA_NETWORK, pay_to=HEDERA_PAY_TO))
 
 _routes = {
     "GET /v1/health": RouteConfig(
