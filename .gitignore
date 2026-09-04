@@ -2,8 +2,11 @@
 *.pyc
 __pycache__/
 node_modules/
+package-lock.json
 dist/
 data/
 *.bak*
 *.key
+*.pem
+*.secret
 .DS_Store
