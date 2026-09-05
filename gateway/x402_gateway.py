@@ -17,7 +17,7 @@ from x402.http.types import RouteConfig
 from x402.server import x402ResourceServer
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.mechanisms.evm.default_assets import DEFAULT_ASSETS as _EVM_ASSETS
-_EVM_ASSETS["hedera:testnet"] = [{"asset": "0.0.456858", "name": "HBAR", "version": "1", "decimals": 8, "symbol": "HBAR"}]
+_EVM_ASSETS["hedera:testnet"] = [{"asset": "0.0.0", "name": "HBAR", "version": "1", "decimals": 8, "symbol": "HBAR"}]
 from x402.extensions.bazaar import declare_discovery_extension, OutputConfig
 
 FEED_PATH = "/opt/phoenix_zero/data/feed.jsonl"
@@ -96,7 +96,7 @@ if HEDERA_PAY_TO:
 
 _pay = [PaymentOption(scheme="exact", price=PRICE, network=NETWORK, pay_to=PAY_TO)]
 if HEDERA_PAY_TO:
-    _pay.append(PaymentOption(scheme="exact", price=PRICE, network=HEDERA_NETWORK, pay_to=HEDERA_PAY_TO))
+    _pay.append(PaymentOption(scheme="exact", price=PRICE, network=HEDERA_NETWORK, pay_to=HEDERA_PAY_TO, extra={"feePayer": "0.0.7162784"}))
 
 _routes = {
     "GET /v1/health": RouteConfig(
