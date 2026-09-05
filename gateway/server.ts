@@ -1149,9 +1149,10 @@ async function startServer() {
         },
       },
       proof,
-      payment_rails: ['base_usdc'],
+      payment_rails: ['base_usdc', 'hedera_hbar'],
       pricing: {
         base_usdc: { amount: '0.01', chain_id: 8453, token: 'USDC' },
+        hedera_hbar: { amount: '0.01', network: 'hedera:testnet', token: 'HBAR' },
       },
       t: Date.now(),
     });
@@ -1216,7 +1217,10 @@ async function startServer() {
       version: '2.0',
       provider: 'Phoenix Zero',
       description: 'Real-time L2 sequencer health oracle with kernel-level bot detection',
-      facilitator: 'https://api.cdp.coinbase.com/platform/v2/x402',
+      facilitators: [
+        { url: 'https://api.cdp.coinbase.com/platform/v2/x402', network: 'eip155:8453' },
+        { url: 'https://api.testnet.blocky402.com', network: 'hedera:testnet' },
+      ],
       endpoints: [
         {
           method: 'GET', path: '/api/v1/safe',
@@ -1242,6 +1246,23 @@ async function startServer() {
           method: 'POST', path: '/api/v1/classify',
           description: 'Agent identity classification (HUMAN/LEGIT_AGENT/MALICIOUS_BOT)',
           price: '$0.01', network: 'eip155:8453', token: 'USDC',
+        },
+        {
+          method: 'GET', path: '/api/v1/health-proof',
+          description: 'Cryptographic proof of node health (HMAC-SHA256 commitment)',
+          price: '$0.01', network: 'eip155:8453', token: 'USDC',
+        },
+      ],
+      hedera_endpoints: [
+        {
+          method: 'GET', path: '/api/v1/health',
+          description: 'Full sequencer health snapshot (Hedera rail)',
+          price: '$0.01', network: 'hedera:testnet', token: 'HBAR',
+        },
+        {
+          method: 'GET', path: '/api/v1/safe',
+          description: 'Boolean safety check (Hedera rail)',
+          price: '$0.01', network: 'hedera:testnet', token: 'HBAR',
         },
       ],
       pay_to: '0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab',
