@@ -1,0 +1,50 @@
+{
+  "name": "phoenix-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Phoenix Zero L2 health oracle — kernel-level network telemetry for AI agents",
+  "type": "module",
+  "bin": {
+    "phoenix-mcp-server": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "server.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "l2",
+    "sequencer",
+    "health",
+    "oracle",
+    "ebpf",
+    "x402",
+    "phoenix-zero",
+    "preflight",
+    "defi",
+    "agent"
+  ],
+  "author": "Kent <aleksandrkent64@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kant19801201behax5/x402-health-oracle"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.23.1",
+    "typescript": "~5.8.2",
+    "vitest": "^4.1.10"
+  }
+}

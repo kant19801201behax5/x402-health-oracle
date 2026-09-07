@@ -59,6 +59,7 @@ Agent → pays $0.01 USDC via x402
 | **Silicon DNA** | `gateway/server.ts` | 14-layer anti-bot (ML-KEM-768, Argon2 PoW, Spearman correlation) |
 | **XDP Threat Filter** | `ebpf/xdp_threat_filter.c` | Kernel-speed packet drop for banned IPs |
 | **LSM Agent Guard** | `ebpf/lsm_agent_guard.c` | Syscall-level sandbox: block execve, restrict network |
+| **MCP Server** | `mcp-server/` | Model Context Protocol server for AI agent discovery |
 
 ## x402 Payment Rails
 
@@ -113,6 +114,32 @@ PAY_TO: `0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab`
 - **BLAKE3 + Ed25519** integrity signing on all telemetry
 - **14-layer bot detection** — CPU jitter, Spearman correlation, Argon2 PoW, Frankenstein header analysis, Sybil clustering, Privacy Pass tokens
 - **Isolation Forest** anomaly scoring (numpy-only)
+
+## MCP Server (AI Agent Discovery)
+
+Phoenix Zero is discoverable via [Model Context Protocol](https://modelcontextprotocol.io) — the standard for AI agent tool discovery used by Claude, Cursor, Windsurf, and others.
+
+**Tool:** `preflight_network_health` — pre-flight L2 health check before transaction execution.
+
+```bash
+# Install and run
+cd mcp-server && npm install && npm run build
+
+# Add to Claude Desktop (claude_desktop_config.json):
+{
+  "mcpServers": {
+    "phoenix-zero": {
+      "command": "node",
+      "args": ["path/to/mcp-server/dist/index.js"]
+    }
+  }
+}
+
+# Test with MCP Inspector
+npx @modelcontextprotocol/inspector node dist/index.js
+```
+
+The tool returns PASS / DEGRADED / FAIL verdicts with kernel-level evidence. Free tier gives aggregate health; premium per-chain telemetry available via x402 ($0.01/query).
 
 ## Quick Start
 
