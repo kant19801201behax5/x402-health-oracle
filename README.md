@@ -35,7 +35,7 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
 | Channel | Status | How agents find us |
 |---------|--------|-------------------|
 | **MCP Registry** | **Published** | AI coding assistants discover `preflight_network_health` tool semantically |
-| **Olas Mech** | **Code ready** | DeFi agents find us in Mech marketplace (425 daily active agents) |
+| **Olas Mech** | **Code ready** (on-chain pending) | DeFi agents find us in Mech marketplace (425 daily active agents) |
 | **Direct x402** | **Live** | Any agent calls `rtt.phoenix-ai.work` with x402 payment |
 | **RPC Gateway** | **Live** | Agent uses our URL as RPC endpoint — doesn't know Phoenix exists |
 
