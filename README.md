@@ -60,6 +60,8 @@ Agent → pays $0.01 USDC via x402
 | **XDP Threat Filter** | `ebpf/xdp_threat_filter.c` | Kernel-speed packet drop for banned IPs |
 | **LSM Agent Guard** | `ebpf/lsm_agent_guard.c` | Syscall-level sandbox: block execve, restrict network |
 | **MCP Server** | `mcp-server/` | Model Context Protocol server for AI agent discovery |
+| **RPC Gateway** | `gateway/rpc_gateway.py` | Transparent health-checking proxy before upstream RPC |
+| **Mech Tool** | `mech-tool/phoenix_health_check.py` | Olas Mech marketplace tool interface |
 
 ## x402 Payment Rails
 
