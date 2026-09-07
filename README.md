@@ -1,55 +1,86 @@
 # x402 Health Oracle
 
-**Kernel-level agentic IAM + x402-monetized chain health data.**
+**Kernel-level L2 health oracle with 4-channel AI agent distribution. x402 micropayments on Base + Hedera.**
 
-Live at: `https://rtt.phoenix-ai.work/api/v1/health`
+Live: `https://rtt.phoenix-ai.work` | npm: [`phoenix-mcp-server`](https://www.npmjs.com/package/phoenix-mcp-server) | MCP Registry: [`io.github.kant19801201behax5/phoenix-mcp-server`](https://registry.modelcontextprotocol.io)
 
 ## Problem
 
-AI agents making autonomous on-chain transactions need two things existing infrastructure doesn't provide:
+AI agents making autonomous on-chain transactions have no way to check network health before committing funds. 64% of DeFi protocols don't verify sequencer health. Base went down for 2 hours in June 2026 with $10.95B at risk.
 
-1. **Reliable chain health data** — agents can't "feel" when a sequencer is degraded; they need objective P99 latency, revert ratios, and stall detection before committing funds.
-2. **Kernel-level security boundaries** — when an agent holds signing keys and executes transactions, a compromised process means stolen funds. Traditional OS permissions are too coarse. The 2026 agentic IAM gap is the #1 unsolved security problem in autonomous AI infrastructure.
+Existing solutions (Chainlink L2 Sequencer Feed) give binary up/down with 30-second OCR updates. Agents need nanosecond-precision RTT, revert ratios, and stall detection — **before** signing a transaction.
 
-## Solution
-
-x402 Health Oracle solves both:
-
-- **12-chain real-time health oracle** monetized via x402 micropayments ($0.01 USDC per query) on Base mainnet and Hedera testnet (via Blocky402 facilitator)
-- **eBPF kernel-level agent sandbox** — XDP drops malicious traffic in <20µs; LSM hooks enforce per-process syscall policies (block execve, restrict network to ports 443/8545) so a compromised agent can't escalate
+## Solution: One Core, Four Entrances
 
 ```
-Agent → GET /api/v1/health
-     ← 402 Payment Required (x402 challenge: Base or Hedera)
-Agent → pays $0.01 USDC via x402
-     ← 200 OK + real-time chain health + execution recommendation
+                    ┌── MCP Server (Claude/Cursor/Windsurf)
+                    │
+Agent ──────────────┼── Olas Mech (DeFi/arbitrage agents)
+                    │
+                    ├── Direct HTTP/x402 (any agent by URL)
+                    │
+                    └── RPC Gateway (transparent proxy)
+                           │
+                           ▼
+                    PHOENIX CORE
+                    ├── x402 paywall ($0.01/query)
+                    ├── 12-chain RTT probe (2s interval)
+                    ├── BLAKE3+Ed25519 integrity signing
+                    ├── Isolation Forest anomaly scoring
+                    └── eBPF XDP enforcement (prog 5437, live)
 ```
 
-## Architecture
+## Distribution Channels
 
-```
-┌─────────────────────┐     ┌──────────────────────┐     ┌──────────────────┐
-│  multi_chain_probe   │────▶│   wss_distributor     │────▶│  x402_gateway    │
-│  12 chains, 2s poll  │     │  BLAKE3+Ed25519 sign  │     │  FastAPI :3002   │
-│  eth_blockNumber     │     │  Isolation Forest      │     │  $0.01/query     │
-│  eth_getBlockReceipts│     │  anomaly scoring       │     │  7 paid endpoints│
-└─────────────────────┘     └──────────────────────┘     └──────────────────┘
-         │                                                       │
-         │           ┌──────────────────┐                        │
-         │           │  eBPF XDP/LSM     │◀───────────────────────┤
-         │           │  kernel sandbox   │  threat IPs → BPF map  │
-         │           │  agent IAM guard  │  agent PID → policy    │
-         │           └──────────────────┘                        │
-         │                                                       ▼
-         │                                             ┌──────────────────┐
-         └────────────────────────────────────────────▶│   server.ts       │
-                                                       │  Silicon DNA      │
-                                                       │  14-layer bot     │
-                                                       │  detection :3001  │
-                                                       └──────────────────┘
+| Channel | Status | How agents find us |
+|---------|--------|-------------------|
+| **MCP Registry** | **Published** | AI coding assistants discover `preflight_network_health` tool semantically |
+| **Olas Mech** | **Code ready** | DeFi agents find us in Mech marketplace (425 daily active agents) |
+| **Direct x402** | **Live** | Any agent calls `rtt.phoenix-ai.work` with x402 payment |
+| **RPC Gateway** | **Code ready** | Agent uses our URL as RPC endpoint — doesn't know Phoenix exists |
+
+## Chains Monitored
+
+12 L2 networks with 2-second sampling interval:
+
+| Chain | Type | Chain | Type |
+|-------|------|-------|------|
+| Base | OP Stack | Scroll | zkEVM |
+| Arbitrum | Nitro | Mantle | OP Stack |
+| Optimism | OP Stack | Linea | zkEVM |
+| zkSync | zkEVM | Blast | OP Stack |
+| Mode | OP Stack | Taiko | Based rollup |
+| Polygon zkEVM | zkEVM | **Casper** | L1 PoS |
+
+Casper is included as an L1 reference chain — the autonomous `casper-agent` service runs DeFi operations on Casper network, protected by the same eBPF kernel sandbox.
+
+## x402 Payment Rails
+
+| Network | Facilitator | Status |
+|---------|-------------|--------|
+| Base mainnet (`eip155:8453`) | Coinbase CDP | **Live** — $0.02 USDC settled |
+| Hedera testnet | Blocky402 | **Integrated** |
+
+```bash
+# Try it — returns 402 Payment Required with x402 challenge
+curl -i https://rtt.phoenix-ai.work/api/v1/health
+
+# Free health endpoint (no payment)
+curl https://rtt.phoenix-ai.work/api/health
 ```
 
-### Components
+### Paid Endpoints ($0.01 USDC each)
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/v1/health` | Full health snapshot (all 12 chains) |
+| `/api/v1/safe` | PASS/DEGRADED/FAIL verdict |
+| `/api/v1/price` | Pricing with MEV surge multiplier |
+| `/api/v1/chains/{chain}` | Single-chain telemetry |
+| `/api/v1/classify` | Agent classification (HUMAN/LEGIT_AGENT/MALICIOUS_BOT) |
+| `/api/v1/health-proof` | ZK-lite verifiable proof of node health |
+
+## Components
 
 | Component | File | Description |
 |-----------|------|-------------|
@@ -63,85 +94,51 @@ Agent → pays $0.01 USDC via x402
 | **RPC Gateway** | `gateway/rpc_gateway.py` | Transparent health-checking proxy before upstream RPC |
 | **Mech Tool** | `mech-tool/phoenix_health_check.py` | Olas Mech marketplace tool interface |
 
-## x402 Payment Rails
-
-| Network | Facilitator | Chain | Status |
-|---------|-------------|-------|--------|
-| `eip155:8453` | Coinbase CDP | Base mainnet | **Live** — 2 settlements ($0.02 USDC) |
-| `hedera:testnet` | Blocky402 | Hedera testnet | **Integrated** — pending first settlement |
-
-All endpoints cost $0.01 USDC.
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/health` | GET | Full health snapshot (all 12 chains) |
-| `/api/v1/safe` | GET | Boolean: safe to execute? |
-| `/api/v1/price` | GET | Current pricing with MEV surge multiplier |
-| `/api/v1/chains/{chain}` | GET | Single-chain health |
-| `/api/v1/classify` | POST | Agent classification (HUMAN/LEGIT_AGENT/MALICIOUS_BOT) |
-| `/api/v1/health-proof` | GET | ZK-lite verifiable proof of node health |
-
-## eBPF: Dynamic Task-Scoped Agentic IAM
-
-The core innovation: eBPF programs enforce **per-agent security policies at the kernel level**, not the application level. This is the missing layer for autonomous AI agents that hold signing keys.
+## eBPF Kernel Security
 
 ### XDP Threat Filter (LIVE since Aug 28, 2026)
 
-eBPF XDP program on `eth0` drops packets from banned IPs before the TCP stack (~5-20µs on virtio_net generic mode; <1µs native on bare-metal). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
+eBPF XDP program (`prog id 5437`) on `eth0` drops malicious packets before the TCP stack (~5-20µs on virtio_net generic mode). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
 
 ### LSM Agent Guard (compiled, kernel-ready)
 
-BPF LSM hooks create a dynamic syscall sandbox per agent process:
-- **Block execve** — agent can't spawn child processes (no reverse shells)
-- **Restrict connect** — only ports 443 (HTTPS) and 8545 (Ethereum RPC)
-- **File access** — read/write limited to agent's working directory
-- **Policy updates** — PID + policy written to BPF map, enforced immediately
-
-This solves the agentic IAM gap: traditional RBAC is per-user, not per-task. eBPF LSM enables per-process, per-syscall, dynamically-scoped policies that update without service restart.
-
-## Verified Revenue
-
-Two on-chain settlements on Base mainnet (Sep 1, 2026):
-- $0.01 USDC — first x402 payment
-- $0.01 USDC — second settlement
-- **Total: $0.02 USDC**
-
-PAY_TO: `0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab`
-
-## Security Stack
-
-- **eBPF XDP** — kernel-speed threat response (live)
-- **eBPF LSM** — per-agent syscall sandbox (compiled)
-- **ML-KEM-768** (NIST FIPS 203) post-quantum key exchange per WebSocket
-- **BLAKE3 + Ed25519** integrity signing on all telemetry
-- **14-layer bot detection** — CPU jitter, Spearman correlation, Argon2 PoW, Frankenstein header analysis, Sybil clustering, Privacy Pass tokens
-- **Isolation Forest** anomaly scoring (numpy-only)
+BPF LSM hooks create a per-agent syscall sandbox:
+- **Block execve** — agent can't spawn child processes
+- **Restrict connect** — only ports 443 (HTTPS) and 8545 (RPC)
+- **File access** — limited to agent's working directory
 
 ## MCP Server (AI Agent Discovery)
 
-Phoenix Zero is discoverable via [Model Context Protocol](https://modelcontextprotocol.io) — the standard for AI agent tool discovery used by Claude, Cursor, Windsurf, and others.
-
-**Tool:** `preflight_network_health` — pre-flight L2 health check before transaction execution.
+Published to npm and MCP Registry. Any AI coding assistant can discover and use our health oracle.
 
 ```bash
-# Install and run
-cd mcp-server && npm install && npm run build
+# Install from npm
+npm install -g phoenix-mcp-server
 
-# Add to Claude Desktop (claude_desktop_config.json):
+# Or add to Claude Desktop (claude_desktop_config.json):
 {
   "mcpServers": {
     "phoenix-zero": {
-      "command": "node",
-      "args": ["path/to/mcp-server/dist/index.js"]
+      "command": "npx",
+      "args": ["phoenix-mcp-server"]
     }
   }
 }
-
-# Test with MCP Inspector
-npx @modelcontextprotocol/inspector node dist/index.js
 ```
 
-The tool returns PASS / DEGRADED / FAIL verdicts with kernel-level evidence. Free tier gives aggregate health; premium per-chain telemetry available via x402 ($0.01/query).
+**Tool:** `preflight_network_health` — returns PASS / DEGRADED / FAIL with kernel-level evidence.
+
+## RPC Gateway (Transparent Proxy)
+
+Agent connects to Phoenix as if it were a normal RPC endpoint. Phoenix checks health before forwarding:
+
+```
+Agent → POST /rpc/base {"method": "eth_sendRawTransaction", ...}
+     Phoenix checks health:
+       PASS → forward to upstream RPC → response + X-Phoenix-Health: PASS
+       DEGRADED → forward + X-Phoenix-Warning header
+       FAIL → 503 "Transaction blocked to protect funds"
+```
 
 ## Docker
 
@@ -152,47 +149,31 @@ curl -i localhost:3002/api/v1/safe   # → 402 Payment Required
 curl localhost:3002/api/health       # → free health status
 ```
 
-## Quick Start
+## Security Stack
 
-**Try the live API** (returns 402 — payment required):
-```bash
-curl -i https://rtt.phoenix-ai.work/api/v1/health
-```
+- **eBPF XDP** — kernel-speed threat response (live, prog 5437)
+- **eBPF LSM** — per-agent syscall sandbox (compiled)
+- **ML-KEM-768** (NIST FIPS 203) post-quantum key exchange
+- **BLAKE3 + Ed25519** integrity signing on all telemetry
+- **14-layer bot detection** — CPU jitter, Spearman correlation, Argon2 PoW, Frankenstein headers, Sybil clustering, Privacy Pass
+- **Isolation Forest** anomaly scoring
 
-**Free health endpoint** (no payment):
-```bash
-curl https://rtt.phoenix-ai.work/api/health
-```
+## Test Suite
 
-**Run locally:**
-```bash
-# x402 gateway (Python)
-cd gateway
-pip install -r requirements.txt
-cp ../.env.example .env   # edit with your CDP/Hedera keys
-uvicorn x402_gateway:app --port 3002
+- **Main repo:** 29 test files, 581 passed, 0 failed, 1 skipped
+- **Hackathon repo:** 3 test suites, 31 passed (gateway 21 + MCP server 10)
+- **Python tests:** 8 passed (gateway config)
+- **Total: 620+ tests**
 
-# Silicon DNA server (TypeScript)
-cd gateway
-npm install
-npx tsx server.ts
+## Verified Revenue
 
-# Multi-chain probe (Python)
-cd probe
-pip install -r requirements.txt
-python multi_chain_probe.py
-```
-
-**Deploy eBPF** (requires Linux kernel 5.15+ with BTF):
-```bash
-cd ebpf
-python xdp_loader.py --attach    # XDP threat filter on eth0
-python lsm_loader.py --pid $PID  # LSM sandbox for agent process
-```
+Two on-chain settlements on Base mainnet (Sep 1, 2026):
+- $0.01 + $0.01 = **$0.02 USDC total**
+- PAY_TO: `0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab`
 
 ## Continuity
 
-This project extends 6+ months of production work. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md) for full before/during table.
+This project extends 6+ months of production work (since March 2026). Server uptime 116+ days. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
 
 ## Paper
 
