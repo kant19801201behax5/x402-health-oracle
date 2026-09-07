@@ -1,6 +1,7 @@
 {
   "name": "phoenix-mcp-server",
-  "version": "1.0.0",
+  "mcpName": "io.github.kant19801201behax5/phoenix-mcp-server",
+  "version": "1.0.1",
   "description": "MCP server for Phoenix Zero L2 health oracle — kernel-level network telemetry for AI agents",
   "type": "module",
   "bin": {

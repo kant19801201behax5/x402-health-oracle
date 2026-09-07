@@ -1,18 +1,26 @@
 {
-  "name": "phoenix-zero",
-  "display_name": "Phoenix Zero — L2 Health Oracle",
-  "description": "Pre-flight network health check for L2 chains using kernel-level eBPF telemetry. Returns PASS/DEGRADED/FAIL with RTT, packet-loss, and timestamp evidence. Covers 12 L2 networks. Premium data via x402 micropayment ($0.01).",
-  "repository": "https://github.com/kant19801201behax5/x402-health-oracle",
-  "homepage": "https://rtt.phoenix-ai.work",
-  "version": "1.0.0",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kant19801201behax5/phoenix-mcp-server",
+  "title": "Phoenix Zero — L2 Health Oracle",
+  "description": "Pre-flight L2 health check using kernel-level eBPF telemetry. PASS/DEGRADED/FAIL verdict.",
+  "repository": {
+    "url": "https://github.com/kant19801201behax5/x402-health-oracle",
+    "source": "github"
+  },
+  "version": "1.0.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "phoenix-mcp-server",
+      "version": "1.0.1",
+      "transport": { "type": "stdio" }
+    }
+  ],
   "tools": [
     {
       "name": "preflight_network_health",
-      "description": "Determine whether an L2 network is currently suitable for transaction execution using kernel-level network telemetry. Returns PASS, DEGRADED, or FAIL with RTT, packet-loss and timestamp evidence."
+      "description": "Determine whether an L2 network is suitable for transaction execution using kernel-level telemetry."
     }
-  ],
-  "prompts": [],
-  "resources": [],
-  "categories": ["defi", "infrastructure", "security"],
-  "tags": ["l2", "sequencer", "health", "oracle", "ebpf", "x402", "preflight", "agent"]
+  ]
 }
