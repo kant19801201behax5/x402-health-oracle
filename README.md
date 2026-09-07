@@ -141,6 +141,15 @@ npx @modelcontextprotocol/inspector node dist/index.js
 
 The tool returns PASS / DEGRADED / FAIL verdicts with kernel-level evidence. Free tier gives aggregate health; premium per-chain telemetry available via x402 ($0.01/query).
 
+## Docker
+
+```bash
+cp .env.example .env   # edit with your keys
+docker compose up
+curl -i localhost:3002/api/v1/safe   # → 402 Payment Required
+curl localhost:3002/api/health       # → free health status
+```
+
 ## Quick Start
 
 **Try the live API** (returns 402 — payment required):

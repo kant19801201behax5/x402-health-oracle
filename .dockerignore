@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.pyc
+__pycache__/
+.git/
+*.key
+*.pem
+*.secret
+mcp-server/node_modules/
+mcp-server/dist/
+concepts/
