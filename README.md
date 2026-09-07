@@ -37,7 +37,7 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
 | **MCP Registry** | **Published** | AI coding assistants discover `preflight_network_health` tool semantically |
 | **Olas Mech** | **Code ready** | DeFi agents find us in Mech marketplace (425 daily active agents) |
 | **Direct x402** | **Live** | Any agent calls `rtt.phoenix-ai.work` with x402 payment |
-| **RPC Gateway** | **Code ready** | Agent uses our URL as RPC endpoint — doesn't know Phoenix exists |
+| **RPC Gateway** | **Live** | Agent uses our URL as RPC endpoint — doesn't know Phoenix exists |
 
 ## Chains Monitored
 
@@ -139,6 +139,18 @@ Agent → POST /rpc/base {"method": "eth_sendRawTransaction", ...}
        DEGRADED → forward + X-Phoenix-Warning header
        FAIL → 503 "Transaction blocked to protect funds"
 ```
+
+**Live — try it now:**
+
+```bash
+curl -X POST https://rtt.phoenix-ai.work/rpc/base \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+# → {"jsonrpc":"2.0","result":"0x...","id":1}
+# + X-Phoenix-Health: PASS header
+```
+
+Supported chains: `base`, `arbitrum`, `optimism`, `zksync`, `scroll`, `mantle`, `linea`, `blast`, `mode`, `taiko`, `polygon_zkevm`.
 
 ## Docker
 
