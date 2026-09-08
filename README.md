@@ -154,11 +154,13 @@ Supported chains: `base`, `arbitrum`, `optimism`, `zksync`, `scroll`, `mantle`, 
 
 ## Docker
 
+Runs the x402 gateway locally. Real-time telemetry comes from the production server at `rtt.phoenix-ai.work`.
+
 ```bash
-cp .env.example .env   # edit with your keys
+cp .env.example .env   # edit with your CDP/Hedera keys
 docker compose up
-curl -i localhost:3002/api/v1/safe   # → 402 Payment Required
-curl localhost:3002/api/health       # → free health status
+curl -i localhost:3002/v1/safe       # → 402 Payment Required
+curl localhost:3002/                  # → service info
 ```
 
 ## Security Stack
