@@ -34,14 +34,17 @@ Phoenix Zero is a production L2 health oracle that gives AI agents nanosecond-pr
 
 ## Partner Prize Explanations
 
-### 1. Hedera — AI & Agentic Payments ($6K)
+### 1. Hedera — 🤖 AI & Agentic Payments on Hedera (up to $2K per team, 3 winners)
 Phoenix Zero integrates Hedera via Blocky402 facilitator for x402 micropayments. AI agents querying network health can pay with HBAR on Hedera testnet. The x402 gateway handles payment verification, and the agent receives kernel-level telemetry (RTT, packet loss, anomaly scores) in response. First Hedera payment of 0.01 HBAR was settled Sep 5. The integration demonstrates a real agentic payment flow: agent needs data → 402 challenge → agent pays HBAR → agent receives health verdict → agent decides whether to transact on L2.
 
-### 2. Arc (Circle) — Best Agentic Economy (Continuity) ($1,666)
+### 2. Arc — 🏆 Best DeFi or Agentic Application — Continuity ($1,666)
 Phoenix Zero's primary payment rail is USDC on Base via Coinbase CDP facilitator. Two on-chain settlements totaling $0.02 USDC prove the agentic economy flow works: AI agents autonomously pay for network intelligence that protects their transactions. The x402 protocol (HTTP 402 Payment Required) is the native payment standard — no wallet UI, no approval popups, just machine-to-machine micropayments. The 4-channel distribution (MCP, RPC Gateway, Direct HTTP, Olas) ensures agents find and pay us through whatever interface they use.
 
-### 3. Bazantic — Help an Agent Use Your Project (Continuity) ($1K)
+### 3. Bazantic — 🤖 Help an Agent Use Your Hackathon Project — Continuity (up to $500 per team, 2 winners)
 We published `phoenix-mcp-server` to npm and the MCP Registry as `io.github.kant19801201behax5/phoenix-mcp-server`. The MCP tool `preflight_network_health` lets any AI coding assistant (Claude, Cursor, Windsurf) discover and use our health oracle semantically. When an agent asks "is Base safe for a transaction?", it finds our tool in the registry, calls it, and gets a PASS/DEGRADED/FAIL verdict with kernel-level evidence. This is literally "help an agent use your project" — zero configuration, pure discovery.
+
+### 4. Hedera — ♻️ Continuity ($1K, 1 winner)
+Phoenix Zero is a 6-month production project (since March 2026) that integrated Hedera during ETHOnline. Blocky402 facilitator enables HBAR micropayments alongside existing Base USDC rail. 11 production services, 117+ days uptime, 620+ tests. The Hedera integration specifically adds a second payment network to our existing x402 infrastructure.
 
 ---
 
