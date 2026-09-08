@@ -12,3 +12,19 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  probe:
+    build: .
+    ports:
+      - "8765:8765"
+      - "8766:8766"
+    environment:
+      - FEED_LOG_PATH=/opt/phoenix_zero/data/feed.jsonl
+      - PHOENIX_EBPF_ENABLED=false
+    command: python -u /app/probe/wss_distributor.py
+    restart: unless-stopped
+    volumes:
+      - probe-data:/opt/phoenix_zero/data
+
+volumes:
+  probe-data:
