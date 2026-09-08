@@ -185,7 +185,7 @@ Two on-chain settlements on Base mainnet (Sep 1, 2026):
 
 ## Continuity
 
-This project extends 6+ months of production work (since March 2026). Server uptime 116+ days. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
+This project extends 6+ months of production work (since March 2026). Server uptime 117+ days. 11 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
 
 ## Paper
 
