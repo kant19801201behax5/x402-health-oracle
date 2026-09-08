@@ -73,8 +73,9 @@ curl https://rtt.phoenix-ai.work/api/health
 
 | Endpoint | Description |
 |----------|-------------|
+| `POST /api/v1/preflight` | **Deterministic execution decision** — PASS/DEGRADED/FAIL with evidence_id |
 | `/api/v1/health` | Full health snapshot (all 12 chains) |
-| `/api/v1/safe` | PASS/DEGRADED/FAIL verdict |
+| `/api/v1/safe` | Boolean safety check with reason code |
 | `/api/v1/price` | Pricing with MEV surge multiplier |
 | `/api/v1/chains/{chain}` | Single-chain telemetry |
 | `/api/v1/classify` | Agent classification (HUMAN/LEGIT_AGENT/MALICIOUS_BOT) |

@@ -131,13 +131,14 @@ server.tool(
                 price: "$0.01 USDC",
                 payment_protocol: "x402 (HTTP 402 micropayment)",
                 endpoint: premiumEndpoint,
+                preflight_endpoint: `${PHOENIX_BASE}/api/v1/preflight`,
+                preflight_note: "POST /api/v1/preflight with {chain} body returns deterministic PASS/DEGRADED/FAIL with evidence_id proving exact network state at decision time.",
                 payment_rails: [
                   { network: "Base mainnet (eip155:8453)", asset: "USDC" },
                   { network: "Hedera testnet", asset: "native HBAR" },
                 ],
                 how_to_pay:
-                  "Send GET request to the endpoint. Server returns 402 with X-PAYMENT header containing payment challenge. Complete x402 payment flow to receive full telemetry.",
-                discovery: `${PHOENIX_BASE}/.well-known/x402`,
+                  "Send request to the endpoint. Server returns 402 with payment-required header containing x402 challenge. Complete payment flow to receive data.",
               },
               null,
               2
