@@ -229,6 +229,54 @@ _routes = {
             ),
         ),
     ),
+    "POST /v1/preflight": RouteConfig(
+        resource="https://rtt.phoenix-ai.work/api/v1/preflight",
+        accepts=_pay,
+        description="Deterministic pre-flight transaction safety decision. Returns PASS/DEGRADED/FAIL with cryptographic evidence of observed network state at decision time. Machine-readable policy. Designed for autonomous agents that need provable execution decisions.",
+        service_name="Phoenix Zero Preflight",
+        tags=["preflight", "decision", "autonomous", "provable", "transaction-safety"],
+        extensions=declare_discovery_extension(
+            input={"chain": "base"},
+            input_schema={
+                "properties": {
+                    "chain": {"type": "string", "enum": ["base", "arbitrum", "optimism", "zksync", "blast", "linea", "mantle", "mode", "scroll", "taiko", "polygon_zkevm", "casper"], "description": "Target L2 chain for transaction"},
+                },
+                "required": ["chain"],
+            },
+            body_type="json",
+            output=OutputConfig(
+                example={
+                    "decision": "PASS",
+                    "chain": "base",
+                    "observed_at": "2026-09-08T14:00:00Z",
+                    "freshness_ms": 420,
+                    "rtt_p99_ms": 37.2,
+                    "revert_ratio": 0.002,
+                    "stall_flag": 0,
+                    "gas_pressure": 0.45,
+                    "blob_base_fee": 0.001,
+                    "policy": "normal-v1",
+                    "evidence_id": "a3c2e5e8a5a2e4f0c8e0e3f4b6a8d7c9",
+                },
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "decision":      {"type": "string", "enum": ["PASS", "DEGRADED", "FAIL"], "description": "Deterministic execution decision"},
+                        "chain":         {"type": "string", "description": "Target chain evaluated"},
+                        "observed_at":   {"type": "string", "description": "ISO 8601 UTC timestamp of observation"},
+                        "freshness_ms":  {"type": "integer", "description": "Age of latest measurement in milliseconds"},
+                        "rtt_p99_ms":    {"type": "number", "description": "P99 RTT to chain sequencer in ms"},
+                        "revert_ratio":  {"type": "number", "description": "Transaction revert ratio (0.0-1.0)"},
+                        "stall_flag":    {"type": "integer", "description": "0=none, 1=stall, 2=slow-creep"},
+                        "gas_pressure":  {"type": "number", "description": "L1 gas utilization ratio (0.0-1.0)"},
+                        "blob_base_fee": {"type": "number", "description": "EIP-4844 blob base fee normalized"},
+                        "policy":        {"type": "string", "description": "Policy version applied to make decision"},
+                        "evidence_id":   {"type": "string", "description": "SHA-256 hash of decision inputs — proves this decision was made from this exact state"},
+                    },
+                },
+            ),
+        ),
+    ),
     "GET /v1/health-proof": RouteConfig(
         resource="https://rtt.phoenix-ai.work/api/v1/health-proof",
         accepts=_pay,
@@ -613,6 +661,97 @@ async def get_price(request: Request):
 # Additive: does not touch the sequencer-health endpoints above. The existing
 # free /api/classify (:3001) is unchanged; this is the paid, x402-gated tier.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# /v1/preflight — Deterministic execution decision with provable evidence.
+# Reads live feed, applies stable policy, returns PASS/DEGRADED/FAIL + evidence_id.
+# ---------------------------------------------------------------------------
+PREFLIGHT_POLICY = "normal-v1"
+_L1_CHAINS_PF = {"casper"}
+
+def _preflight_decision(chain: str, metrics: dict, health: dict | None, eth_sig: dict | None) -> dict:
+    now_ms = int(time.time() * 1000)
+    r = metrics.get(chain, {})
+    p99 = r.get("p99_ms", 0) or 0
+    stall = r.get("stall_flag", 0) or 0
+    ts = r.get("_ts", 0) or 0
+    freshness_ms = int((time.time() - ts) * 1000) if ts else 99999
+
+    rev = None
+    if chain == "base" and health:
+        rev = health.get("base_revert_ratio")
+    elif chain == "arbitrum" and health:
+        rev = health.get("arb_revert_ratio")
+    rev = rev if rev is not None else 0.0
+
+    gas_p = (eth_sig or {}).get("gas_pressure", 0) or 0
+    blob = (eth_sig or {}).get("blob_base_fee", 0) or 0
+
+    is_l1 = chain in _L1_CHAINS_PF
+    p99_fail = 2000 if is_l1 else 500
+    p99_deg = 1000 if is_l1 else 200
+    stall_fail = 10000 if is_l1 else 5000
+
+    if freshness_ms > 60000:
+        decision = "FAIL"
+    elif stall == 1 or p99 >= stall_fail:
+        decision = "FAIL"
+    elif p99 > p99_fail or rev > 0.30:
+        decision = "FAIL"
+    elif p99 > p99_deg or rev > 0.10 or freshness_ms > 30000:
+        decision = "DEGRADED"
+    else:
+        decision = "PASS"
+
+    observed_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else datetime.now(timezone.utc).isoformat()
+
+    evidence_input = f"{chain}|{observed_at}|{p99}|{rev}|{stall}|{gas_p}|{blob}|{PREFLIGHT_POLICY}"
+    evidence_id = hashlib.sha256(evidence_input.encode()).hexdigest()
+
+    return {
+        "decision": decision,
+        "chain": chain,
+        "observed_at": observed_at,
+        "freshness_ms": freshness_ms,
+        "rtt_p99_ms": round(p99, 2),
+        "revert_ratio": round(rev, 4),
+        "stall_flag": stall,
+        "gas_pressure": round(gas_p, 4),
+        "blob_base_fee": round(blob, 6),
+        "policy": PREFLIGHT_POLICY,
+        "evidence_id": evidence_id,
+    }
+
+@app.post("/v1/preflight", summary="Deterministic pre-flight decision — PASS / DEGRADED / FAIL with evidence")
+async def preflight(request: Request):
+    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
+    if _x_pay:
+        try:
+            from x402.http.utils import decode_payment_signature_header
+            _pl = decode_payment_signature_header(_x_pay)
+            _fa = (_pl.payload.get("authorization") or {}).get("from") or \
+                  _pl.payload.get("from_address") or _pl.payload.get("from") or ""
+            if _fa:
+                _save_agent_fingerprint(_fa, str(request.url.path))
+        except Exception:
+            pass
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    chain = (body.get("chain") or "base").lower().strip()
+    valid_chains = set(UPSTREAM_RPCS) if "UPSTREAM_RPCS" in dir() else {
+        "base", "arbitrum", "optimism", "zksync", "scroll", "mantle",
+        "linea", "blast", "mode", "taiko", "polygon_zkevm", "casper",
+    }
+    if chain not in valid_chains:
+        return JSONResponse(status_code=400, content={
+            "error": f"unknown chain: {chain}",
+            "supported": sorted(valid_chains),
+        })
+    metrics, health, eth_sig = _read_latest()
+    return _preflight_decision(chain, metrics, health, eth_sig)
+
+
 _CLASSIFY_URL = os.environ.get("SILICON_DNA_CLASSIFY_URL", "http://127.0.0.1:3001/api/classify")
 _classify_client = httpx.AsyncClient(timeout=3.0)
 
