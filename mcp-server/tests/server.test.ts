@@ -114,10 +114,10 @@ describe("server.json manifest", () => {
     const raw = fs.readFileSync(manifestPath, "utf-8");
     const manifest = JSON.parse(raw);
 
-    expect(manifest.name).toBe("phoenix-zero");
+    expect(manifest.name).toBe("io.github.kant19801201behax5/phoenix-mcp-server");
     expect(manifest.tools).toHaveLength(1);
     expect(manifest.tools[0].name).toBe("preflight_network_health");
-    expect(manifest.version).toBe("1.0.0");
-    expect(manifest.repository).toContain("x402-health-oracle");
+    expect(manifest.version).toBe("1.0.1");
+    expect(manifest.repository.url).toContain("x402-health-oracle");
   });
 });
