@@ -17,10 +17,14 @@ This project extends [SiliconDNA-PhoenixZero](https://github.com/kant19801201beh
 | Zenodo paper | Published Sep 2 | DOI: [10.5281/zenodo.22239862](https://doi.org/10.5281/zenodo.22239862) |
 | Casper Agentic Buildathon | Finalist | ETHGlobal history |
 
-## Built for ETHOnline 2026 (Sep 4-16)
+## Built for ETHOnline 2026 (Sep 4-13)
 
 | Feature | Description |
 |---------|-------------|
+| **MCP Server → npm + Registry** | `phoenix-mcp-server@1.0.1` published to npm; listed on MCP Registry for AI assistant discovery |
+| **RPC Gateway** | FastAPI proxy on port 3003 — health-checks before forwarding `eth_sendRawTransaction` to 11 upstream L2 RPCs. Live at `rtt.phoenix-ai.work/rpc/` |
+| **Docker support** | `docker-compose.yml` — one-command deployment of gateway + probe |
+| **Olas Mech tool** | `phoenix_health_check.py` — tool interface for DeFi agent marketplace (on-chain registration pending) |
 | **Blocky402 Hedera integration** | x402 payment rail on Hedera testnet via Blocky402 facilitator, alongside existing Base mainnet |
 | **eBPF LSM as Agentic IAM** | Dynamic task-scoped kernel sandbox for AI agent processes — blocks execve, restricts network to ports 443/8545 |
 | **Recommendation engine fix** | Per-chain-type thresholds (L1 vs L2) for accurate health recommendations |
@@ -32,4 +36,4 @@ This project extends [SiliconDNA-PhoenixZero](https://github.com/kant19801201beh
 
 - **This repo** (`x402-health-oracle`): hackathon submission, public, no internal references
 - **Parent repo** (`SiliconDNA-PhoenixZero`): ongoing development, full history
-- **Production**: `rtt.phoenix-ai.work` — live API serving real traffic since March 2026
+- **Production**: `rtt.phoenix-ai.work` — live API serving real traffic since March 2026, 11 systemd services, 117+ days uptime
