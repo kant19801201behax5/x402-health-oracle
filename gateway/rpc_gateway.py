@@ -2,13 +2,15 @@
 
 Sits between an agent and an upstream L2 RPC.
 Before forwarding eth_sendRawTransaction (and other write methods),
-checks Phoenix health oracle. If DEGRADED or FAIL — returns warning
-or rejects with a suggestion to use a healthier chain.
+checks Phoenix health oracle AND Silicon DNA anti-bot.
+If banned by Silicon DNA — rejects immediately.
+If DEGRADED or FAIL health — returns warning or rejects.
 
 Usage:
     uvicorn gateway.rpc_gateway:app --host 0.0.0.0 --port 3003
 """
 
+import os
 import time
 import json
 import logging
@@ -20,7 +22,7 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("phoenix.rpc_gateway")
 
-app = FastAPI(title="Phoenix RPC Gateway", version="1.0.0")
+app = FastAPI(title="Phoenix RPC Gateway", version="1.1.0")
 
 UPSTREAM_RPCS: dict[str, str] = {
     "base": "https://mainnet.base.org",
@@ -36,7 +38,7 @@ UPSTREAM_RPCS: dict[str, str] = {
     "polygon_zkevm": "https://zkevm-rpc.com",
 }
 
-PHOENIX_API = "https://rtt.phoenix-ai.work"
+SILICON_DNA_URL = os.environ.get("SILICON_DNA_URL", "http://127.0.0.1:3001")
 
 WRITE_METHODS = {
     "eth_sendRawTransaction",
@@ -44,7 +46,9 @@ WRITE_METHODS = {
 }
 
 _health_cache: dict[str, Any] = {"data": None, "ts": 0}
+_ban_cache: dict[str, Any] = {}
 CACHE_TTL = 5
+BAN_CACHE_TTL = 10
 
 
 async def _get_health() -> dict[str, Any]:
@@ -52,8 +56,8 @@ async def _get_health() -> dict[str, Any]:
     if _health_cache["data"] and (now - _health_cache["ts"]) < CACHE_TTL:
         return _health_cache["data"]
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(f"{PHOENIX_API}/api/health")
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(f"{SILICON_DNA_URL}/api/health")
             data = r.json()
             _health_cache["data"] = data
             _health_cache["ts"] = now
@@ -61,6 +65,30 @@ async def _get_health() -> dict[str, Any]:
     except Exception as e:
         logger.warning("Phoenix health check failed: %s", e)
         return {"health": "unknown", "safe": True, "last_measurement_s": 0}
+
+
+async def _is_banned(ip: str) -> bool:
+    now = time.time()
+    cached = _ban_cache.get(ip)
+    if cached and (now - cached["ts"]) < BAN_CACHE_TTL:
+        return cached["banned"]
+    try:
+        async with httpx.AsyncClient(timeout=0.5) as client:
+            r = await client.get(f"{SILICON_DNA_URL}/api/check-ip", params={"ip": ip})
+            banned = r.json().get("banned", False)
+            _ban_cache[ip] = {"banned": banned, "ts": now}
+            return banned
+    except Exception:
+        return False
+
+
+def _client_ip(request: Request) -> str:
+    return (
+        request.headers.get("x-real-ip")
+        or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or request.client.host
+        or ""
+    )
 
 
 def _derive_verdict(data: dict) -> tuple[str, str]:
@@ -77,8 +105,10 @@ def _derive_verdict(data: dict) -> tuple[str, str]:
 async def root():
     return {
         "service": "Phoenix RPC Gateway",
+        "version": "1.1.0",
         "chains": list(UPSTREAM_RPCS.keys()),
-        "health_source": PHOENIX_API,
+        "health_source": SILICON_DNA_URL,
+        "silicon_dna": "integrated",
     }
 
 
@@ -92,6 +122,22 @@ async def rpc_proxy(chain: str, request: Request):
                 "error": {"code": -32600, "message": f"Unknown chain: {chain}. Supported: {', '.join(sorted(UPSTREAM_RPCS))}"},
                 "id": None,
             },
+        )
+
+    ip = _client_ip(request)
+    if ip and await _is_banned(ip):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32000,
+                    "message": "Blocked by Silicon DNA anti-bot.",
+                    "data": {"reason": "banned_ip", "source": "silicon_dna"},
+                },
+                "id": None,
+            },
+            headers={"X-Phoenix-Health": "BLOCKED", "X-Blocked-By": "silicon-dna"},
         )
 
     try:
@@ -118,7 +164,7 @@ async def rpc_proxy(chain: str, request: Request):
                         "verdict": verdict,
                         "reason": reason,
                         "suggestion": "Try a different chain or wait for recovery.",
-                        "health_source": PHOENIX_API,
+                        "health_source": SILICON_DNA_URL,
                     },
                 },
                 "id": body.get("id"),
@@ -137,7 +183,7 @@ async def rpc_proxy(chain: str, request: Request):
     headers = {
         "X-Phoenix-Health": verdict,
         "X-Phoenix-Reason": reason,
-        "X-Phoenix-Source": PHOENIX_API,
+        "X-Phoenix-Source": SILICON_DNA_URL,
     }
 
     if method in WRITE_METHODS and verdict == "DEGRADED":
