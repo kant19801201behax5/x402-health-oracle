@@ -37,7 +37,7 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
 |---------|--------|-------------------|
 | **MCP Registry** | **Published** | AI coding assistants discover `preflight_network_health` tool semantically |
 | **MCP Discovery** | **Live** | `/.well-known/mcp.json` — 5 tools (1 free + 4 paid) for LLM agent auto-discovery |
-| **npm SDK** | **Code ready** (scoped pkg needs org) | `@phoenix-zero/preflight` — 3-line integration with `createPhoenixTool()` for AgentKit/LangChain |
+| **npm SDK** | **Code ready** (scoped pkg needs org) | `phoenix-zero-preflight` — 3-line integration with `createPhoenixTool()` for AgentKit/LangChain |
 | **Olas Mech** | **Code ready** (on-chain pending) | DeFi agents find us in Mech marketplace (425 daily active agents) |
 | **Direct x402** | **Live** | Any agent calls `rtt.phoenix-ai.work` with x402 payment |
 | **Free Demo** | **Live** | `/api/v1/demo/safe` — 100 calls/IP/day, no payment needed |
@@ -149,12 +149,12 @@ npm install -g phoenix-mcp-server
 - `check_safety_free` — FREE safety check (100 calls/IP/day). Returns `{safe, reason, chain}` for any of 12 chains.
 - `preflight_network_health` — PASS / DEGRADED / FAIL with kernel-level evidence. Free for `health_check`, x402 $0.01 for `rtt_ns`/`revert_ratio`.
 
-## npm SDK — `@phoenix-zero/preflight`
+## npm SDK — `phoenix-zero-preflight`
 
 3-line integration for bot developers:
 
 ```javascript
-const { PhoenixPreflight } = require("@phoenix-zero/preflight");
+const { PhoenixPreflight } = require("phoenix-zero-preflight");
 const phoenix = new PhoenixPreflight();
 
 // Free demo — no payment needed
@@ -162,7 +162,7 @@ const result = await phoenix.checkSafe("base");
 // { safe: true, reason: "ok", chain: "base", demo: true }
 
 // For AgentKit / LangChain — drop-in tool
-const { createPhoenixTool } = require("@phoenix-zero/preflight");
+const { createPhoenixTool } = require("phoenix-zero-preflight");
 const tool = createPhoenixTool();
 // tool.name = "phoenix_preflight_safety"
 ```
