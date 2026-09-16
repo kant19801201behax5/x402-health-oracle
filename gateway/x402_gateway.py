@@ -4,10 +4,11 @@ Phoenix Zero x402 Gateway — M2M API for AI agents.
 Agents pay $0.01 USDC per call via x402 (Base mainnet).
 Returns real-time sequencer health: P99, revert_ratio, recommendation.
 """
-import json, time, os, hashlib
+import json, time, os, hashlib, threading
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
+from multi_chain_probe import CHAINS as UPSTREAM_RPCS
 from fastapi.middleware.cors import CORSMiddleware
 
 # x402 imports
@@ -21,6 +22,26 @@ _EVM_ASSETS["hedera:testnet"] = [{"asset": "0.0.0", "name": "HBAR", "version": "
 from x402.extensions.bazaar import declare_discovery_extension, OutputConfig
 
 FEED_PATH = "/opt/phoenix_zero/data/feed.jsonl"
+
+# ---------------------------------------------------------------------------
+# Free demo tier: limited safe check without x402 payment
+# ---------------------------------------------------------------------------
+from collections import defaultdict
+
+_demo_counter: dict[str, list] = {}  # IP -> [date_str, count]
+_DEMO_DAILY_LIMIT = 100
+
+def _demo_rate_ok(ip: str) -> bool:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entry = _demo_counter.get(ip)
+    if not entry or entry[0] != today:
+        _demo_counter[ip] = [today, 1]
+        return True
+    if entry[1] >= _DEMO_DAILY_LIMIT:
+        return False
+    entry[1] += 1
+    return True
+
 PAY_TO    = "0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab"
 NETWORK   = "eip155:8453"   # Base mainnet  # Base mainnet
 PRICE     = "$0.01"   # Phase 66: raised from $0.0001 (SignalFuse charges $0.01)
@@ -32,10 +53,10 @@ app = FastAPI(
         "Real-time L2 sequencer health oracle monitoring 12 chains: "
         "Base, Arbitrum, Optimism, zkSync, Blast, Linea, Mantle, Mode, Scroll, Taiko, Polygon zkEVM, Casper. "
         "Kernel-level eBPF RTT probes every 2 seconds + eth_getBlockReceipts revert analysis. "
-        "Includes agent identity classification via physical-layer NIC fingerprinting. "
+        "Includes behavioral timing analysis for agent identity classification (CPU jitter entropy, Shannon entropy, Spearman rank correlation per paper Section 5). "
         "Payment: $0.01 USDC per call via x402 on Base mainnet."
     ),
-    version="5.3.0",
+    version="5.4.0",
     contact={"email": "aleksandrkent64@gmail.com"},
 )
 
@@ -102,7 +123,7 @@ _routes = {
     "GET /v1/health": RouteConfig(
         resource="https://rtt.phoenix-ai.work/api/v1/health",
         accepts=_pay,
-        description="Real-time L2 sequencer health across 12 chains (Base, Arbitrum, Optimism, zkSync, Blast, Linea, Mantle, Mode, Scroll, Taiko, Polygon zkEVM, Casper). Returns kernel-level P99/P95 RTT from eBPF probes, revert ratios, gas pressure, and execution recommendation.",
+        description="Real-time L2 sequencer health across 12 chains (Base, Arbitrum, Optimism, zkSync, Blast, Linea, Mantle, Mode, Scroll, Taiko, Polygon zkEVM, Casper). Returns kernel-level P99/P95 RTT from eBPF probes, revert ratios (Base and Arbitrum via eth_getBlockReceipts), gas pressure, and execution recommendation.",
         service_name="Phoenix Zero L2 Health Oracle",
         tags=["l2", "sequencer", "health", "ebpf", "revert-ratio", "12-chain"],
         extensions=declare_discovery_extension(
@@ -140,19 +161,21 @@ _routes = {
     "GET /v1/safe": RouteConfig(
         resource="https://rtt.phoenix-ai.work/api/v1/safe",
         accepts=_pay,
-        description="Boolean pre-flight check for L2 transaction safety. Returns safe=true/false with reason code. Optimized for high-frequency agent calls before submitting transactions.",
+        description="Boolean pre-flight check for L2 transaction safety across all 12 chains (?chain= param, default: base). Returns safe=true/false with reason code. Revert ratio data available for Base and Arbitrum only (eth_getBlockReceipts); other chains use RTT-only analysis. Optimized for high-frequency agent calls.",
         service_name="Phoenix Zero Safe Check",
         tags=["l2", "safe", "pre-flight", "boolean"],
         extensions=declare_discovery_extension(
             output=OutputConfig(
-                example={"safe": True, "reason": "ok", "base_p99_ms": 42.3, "revert_ratio": 0.023},
+                example={"safe": True, "chain": "base", "reason": "ok", "p99_ms": 42.3, "revert_ratio": 0.023, "revert_data_available": True},
                 schema={
                     "type": "object",
                     "properties": {
                         "safe":          {"type": "boolean", "description": "true = safe to execute L2 transaction now"},
-                        "reason":        {"type": "string", "enum": ["ok", "elevated_revert", "high_revert", "sequencer_stall", "data_stale"]},
-                        "base_p99_ms":   {"type": "number", "description": "Base sequencer P99 RTT in milliseconds"},
-                        "revert_ratio":  {"type": "number", "description": "Base revert ratio (0.0-1.0)"},
+                        "reason":        {"type": "string", "enum": ["ok", "elevated_revert", "high_revert", "elevated_latency", "high_latency", "sequencer_stall", "data_stale"]},
+                        "chain":         {"type": "string", "description": "Chain checked (default: base, supports all 12)"},
+                        "p99_ms":        {"type": "number", "description": "Sequencer P99 RTT in milliseconds"},
+                        "revert_ratio":  {"type": "number", "description": "Transaction revert ratio (0.0-1.0). null for chains without revert data."},
+                        "revert_data_available": {"type": "boolean", "description": "True if revert ratio is measured for this chain (Base and Arbitrum only)"},
                     },
                 },
             ),
@@ -169,7 +192,7 @@ _routes = {
                 example={
                     "current_price_usdc": "$0.01",
                     "surge_multiplier": 1.0,
-                    "normal_price_usdc": "$0.0001",
+                    "normal_price_usdc": "$0.01",
                     "recommendation": "SAFE_TO_EXECUTE",
                 },
             ),
@@ -208,9 +231,9 @@ _routes = {
     "POST /v1/classify": RouteConfig(
         resource="https://rtt.phoenix-ai.work/api/v1/classify",
         accepts=_pay,
-        description="Silicon DNA agent identity classification. Analyzes TLS fingerprint, timing jitter, behavioral entropy to classify as HUMAN, LEGIT_AGENT, or MALICIOUS_BOT. Physical-layer NIC fingerprinting.",
+        description="Silicon DNA agent identity classification. Behavioral timing analysis: CPU jitter entropy (L0), Shannon entropy (L2), Spearman rank correlation (L3) to classify as HUMAN, LEGIT_AGENT, or MALICIOUS_BOT. Per paper Section 5.1.",
         service_name="Silicon DNA Classifier",
-        tags=["identity", "bot-detection", "sybil", "nic-fingerprint"],
+        tags=["identity", "bot-detection", "sybil", "behavioral-timing"],
         extensions=declare_discovery_extension(
             input={"headers": {"user-agent": "Mozilla/5.0"}, "ip": "1.2.3.4"},
             input_schema={
@@ -280,20 +303,20 @@ _routes = {
     "GET /v1/health-proof": RouteConfig(
         resource="https://rtt.phoenix-ai.work/api/v1/health-proof",
         accepts=_pay,
-        description="Cryptographic proof of node health. HMAC-SHA256 commitment over 8-layer security assessment (PQC, Frankenstein, Spearman, entropy, jitter) plus eBPF XDP/LSM status. Verifiable without revealing raw metrics.",
+        description="HMAC-SHA256 integrity commitment over node health assessment and eBPF XDP/LSM status. Provides tamper evidence (BLAKE3+Ed25519 per paper Section 6.3). Not a zero-knowledge proof.",
         service_name="Silicon DNA Health Proof",
-        tags=["zkproof", "health", "ebpf", "commitment", "verifiable"],
+        tags=["integrity-proof", "health", "ebpf", "commitment", "verifiable"],
         extensions=declare_discovery_extension(
             output=OutputConfig(
                 example={
                     "node": {
                         "health": "operational",
                         "uptime_s": 86400,
-                        "version": "5.0.0",
+                        "version": "5.4.0",
                         "threat_score": 0.05,
-                        "layers_passed": "10000110",
+                        "layers_passed": "11000111",
                         "trust_ratio": 0.998,
-                        "ebpf": {"xdp_shield": True, "lsm_guard": True, "banned_ips": 3},
+                        "ebpf": {"xdp_shield": True, "lsm_guard": False, "banned_ips": 3},
                     },
                     "proof": {
                         "commitment": "c334f6106a1e6e184111607dcfb657e897bebad20d552fad3c2798112cc65ad0",
@@ -309,6 +332,38 @@ _routes = {
                     "properties": {
                         "node":  {"type": "object", "description": "Node health: status, uptime, version, 8-layer security bitmap, trust ratio, eBPF XDP/LSM status"},
                         "proof": {"type": "object", "description": "HMAC-SHA256 commitment over health metrics. Verifiable without revealing raw values. Includes salt, layer bitmap, timestamp, IP hash"},
+                    },
+                },
+            ),
+        ),
+    ),
+    "GET /v1/correlation": RouteConfig(
+        resource="https://rtt.phoenix-ai.work/api/v1/correlation",
+        accepts=_pay,
+        description="12x12 cross-chain temporal correlation matrix R_xy and Frobenius anomaly score A(t). Paper Section 3: synchronized activity detection across all chains. A spike in A(t) indicates a new coordinated source (MEV cluster, bot farm).",
+        service_name="Silicon DNA Correlation Matrix",
+        tags=["correlation", "cross-chain", "anomaly", "frobenius", "r_xy", "bot-detection"],
+        extensions=declare_discovery_extension(
+            output=OutputConfig(
+                example={
+                    "matrix": {"base_arbitrum": 0.42, "base_optimism": 0.31, "arbitrum_zksync": 0.89},
+                    "max_correlation": 0.89,
+                    "sync_pairs": [["arbitrum", "zksync", 0.89]],
+                    "sync_pair_count": 1,
+                    "anomaly_score": 2.34,
+                    "anomaly_flag": True,
+                    "baseline_samples": 50,
+                    "chains_active": 12,
+                    "window_samples": 30,
+                },
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "matrix":           {"type": "object", "description": "Pearson R_xy for all 66 unique chain pairs"},
+                        "max_correlation":  {"type": "number", "description": "Highest |R_xy| across all pairs (0.0-1.0)"},
+                        "sync_pairs":       {"type": "array",  "description": "Chain pairs with |R_xy| > 0.85"},
+                        "anomaly_score":    {"type": "number", "description": "Frobenius norm A(t) = ||R_window - R_baseline||_F"},
+                        "anomaly_flag":     {"type": "boolean","description": "True when A(t) > threshold"},
                     },
                 },
             ),
@@ -432,6 +487,40 @@ def _save_agent_fingerprint(from_address: str, endpoint: str) -> None:
     except Exception:
         pass  # fingerprinting must never break the response
 
+def _fingerprint_from_payment(request: Request) -> None:
+    """Extract payer address from x402 payment header and save fingerprint."""
+    x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
+    if not x_pay:
+        return
+    fa = ""
+    # Primary: x402 SDK decode
+    try:
+        from x402.http.utils import decode_payment_signature_header
+        pl = decode_payment_signature_header(x_pay)
+        p = pl.payload if hasattr(pl, "payload") else (pl if isinstance(pl, dict) else {})
+        if isinstance(p, dict):
+            fa = ((p.get("authorization") or {}).get("from") or
+                  p.get("from_address") or p.get("from") or "")
+    except Exception as e:
+        print(f"[FINGERPRINT] SDK decode error: {e}")
+    # Fallback: raw base64 decode
+    if not fa:
+        try:
+            import base64
+            raw = base64.b64decode(x_pay + "=" * (-len(x_pay) % 4))
+            d = json.loads(raw)
+            p = d.get("payload", d)
+            if isinstance(p, dict):
+                fa = ((p.get("authorization", {}).get("from") or
+                       p.get("from_address") or p.get("from") or ""))
+        except Exception:
+            pass
+    if fa:
+        _save_agent_fingerprint(fa, str(request.url.path))
+        print(f"[FINGERPRINT] Saved: {fa[:10]}... on {request.url.path}")
+    elif x_pay:
+        print(f"[FINGERPRINT] No from_address in X-PAYMENT ({len(x_pay)}b)")
+
 # ---------------------------------------------------------------------------
 # Data reader
 # ---------------------------------------------------------------------------
@@ -439,6 +528,7 @@ def _read_latest():
     metrics = {}   # chain -> latest PHOENIX_METRIC record
     health  = None # latest PHOENIX_L2_HEALTH
     eth_sig = None # latest PHOENIX_ETH_SIGNAL
+    corr    = None # latest SILICON_DNA_CORRELATION (12x12 R_xy matrix)
 
     try:
         with open(FEED_PATH, "rb") as f:
@@ -459,11 +549,13 @@ def _read_latest():
                     health = r
                 elif t == "PHOENIX_ETH_SIGNAL":
                     eth_sig = r
+                elif t == "SILICON_DNA_CORRELATION":
+                    corr = r
             except Exception:
                 pass
     except Exception:
         pass
-    return metrics, health, eth_sig
+    return metrics, health, eth_sig, corr
 
 _L1_CHAINS = {"casper"}
 _L1_P99_THRESHOLD = 2000
@@ -495,18 +587,8 @@ def _recommendation(metrics, health):
 # ---------------------------------------------------------------------------
 @app.get("/v1/health", summary="Full sequencer health snapshot (all chains)")
 async def get_health(request: Request):
-    # Silicon DNA: fingerprint paying agent (x402 already verified payment)
-    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
-    if _x_pay:
-        try:
-            from x402.http.utils import decode_payment_signature_header
-            _pl = decode_payment_signature_header(_x_pay)
-            _fa = (_pl.payload.get("authorization") or {}).get("from") or                   _pl.payload.get("from_address") or _pl.payload.get("from") or ""
-            if _fa:
-                _save_agent_fingerprint(_fa, str(request.url.path))
-        except Exception:
-            pass
-    metrics, health, eth_sig = _read_latest()
+    _fingerprint_from_payment(request)
+    metrics, health, eth_sig, _ = _read_latest()
     now = datetime.now(timezone.utc).isoformat()
 
     chains = {}
@@ -534,18 +616,8 @@ async def get_health(request: Request):
 
 @app.get("/v1/chains/{chain}", summary="Single-chain health (base|arbitrum|optimism|zksync)")
 async def get_chain(chain: str, request: Request):
-    # Silicon DNA: fingerprint paying agent (x402 already verified payment)
-    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
-    if _x_pay:
-        try:
-            from x402.http.utils import decode_payment_signature_header
-            _pl = decode_payment_signature_header(_x_pay)
-            _fa = (_pl.payload.get("authorization") or {}).get("from") or                   _pl.payload.get("from_address") or _pl.payload.get("from") or ""
-            if _fa:
-                _save_agent_fingerprint(_fa, str(request.url.path))
-        except Exception:
-            pass
-    metrics, health, _ = _read_latest()
+    _fingerprint_from_payment(request)
+    metrics, health, _, _ = _read_latest()
     r = metrics.get(chain.lower())
     if not r:
         return JSONResponse(status_code=404, content={"error": f"chain '{chain}' not found"})
@@ -587,62 +659,86 @@ def _surge_price(metrics, health) -> tuple[str, float]:
     return PRICE_NORMAL, 1.0
 
 
+# Dynamic surge pricing: updates x402 payment challenge every 10s
+def _surge_price_daemon():
+    time.sleep(5)
+    while True:
+        try:
+            result = _read_latest()
+            metrics, health = result[0], result[1]
+            price, _ = _surge_price(metrics, health)
+            _pay[0] = PaymentOption(scheme="exact", price=price, network=NETWORK, pay_to=PAY_TO)
+            if len(_pay) > 1 and HEDERA_PAY_TO:
+                _pay[1] = PaymentOption(scheme="exact", price=price, network=HEDERA_NETWORK, pay_to=HEDERA_PAY_TO, extra={"feePayer": "0.0.7162784"})
+        except Exception:
+            pass
+        time.sleep(10)
+
+threading.Thread(target=_surge_price_daemon, daemon=True, name="surge-pricing").start()
+
+
+_SAFE_VALID_CHAINS = set(UPSTREAM_RPCS)
+
 @app.get(
     "/v1/safe",
     summary="Boolean safety check for agents — cheapest endpoint",
     description=(
         "Returns a single boolean: safe=true means execute now, safe=false means wait. "
-        "Optimized for high-frequency agent pre-flight checks. "
+        "Supports all 12 chains via ?chain= query param (default: base). "
         "Reason codes: ok | elevated_revert | high_revert | sequencer_stall | data_stale"
     ),
 )
 async def get_safe(request: Request):
-    # Silicon DNA: fingerprint paying agent (x402 already verified payment)
-    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
-    if _x_pay:
-        try:
-            from x402.http.utils import decode_payment_signature_header
-            _pl = decode_payment_signature_header(_x_pay)
-            _fa = (_pl.payload.get("authorization") or {}).get("from") or                   _pl.payload.get("from_address") or _pl.payload.get("from") or ""
-            if _fa:
-                _save_agent_fingerprint(_fa, str(request.url.path))
-        except Exception:
-            pass
-    metrics, health, _ = _read_latest()
-    base = metrics.get("base", {})
-    p99  = base.get("p99_ms", 0)
-    stall = base.get("stall_flag", False)
-    rev  = (health or {}).get("base_revert_ratio", 0.0)
-    ts   = base.get("_ts", 0)
+    _fingerprint_from_payment(request)
+    chain = (request.query_params.get("chain") or "base").lower().strip()
+    if chain not in _SAFE_VALID_CHAINS:
+        return JSONResponse(status_code=400, content={
+            "error": f"unknown chain: {chain}", "supported": sorted(_SAFE_VALID_CHAINS),
+        })
+    is_l1 = chain in _L1_CHAINS
+    metrics, health, _, _ = _read_latest()
+    r = metrics.get(chain, {})
+    p99  = r.get("p99_ms", 0)
+    stall = r.get("stall_flag", False)
+    ts   = r.get("_ts", 0)
 
-    # Data freshness check
+    # Revert ratio: only available for Base and Arbitrum (eth_getBlockReceipts)
+    rev = None
+    revert_available = False
+    if chain == "base" and health:
+        rev = (health or {}).get("base_revert_ratio")
+        revert_available = rev is not None
+    elif chain == "arbitrum" and health:
+        rev = (health or {}).get("arb_revert_ratio")
+        revert_available = rev is not None
+    rev_val = rev if rev is not None else 0.0
+
+    stall_thresh = 10000 if is_l1 else 5000
+    high_thresh = 2000 if is_l1 else 500
+    elev_thresh = 1000 if is_l1 else 200
+
+    resp = {"chain": chain, "p99_ms": p99, "revert_ratio": round(rev_val, 4) if revert_available else None, "revert_data_available": revert_available}
+
     if ts and (time.time() - ts) > 30:
-        return {"safe": False, "reason": "data_stale", "age_s": round(time.time() - ts)}
+        return {"safe": False, "reason": "data_stale", "age_s": round(time.time() - ts), **resp}
+    if stall or p99 >= stall_thresh:
+        return {"safe": False, "reason": "sequencer_stall", **resp}
+    if revert_available and rev >= 0.30:
+        return {"safe": False, "reason": "high_revert", **resp}
+    if p99 > high_thresh:
+        return {"safe": False, "reason": "high_latency", **resp}
+    if revert_available and rev >= 0.10:
+        return {"safe": False, "reason": "elevated_revert", **resp}
+    if p99 > elev_thresh:
+        return {"safe": False, "reason": "elevated_latency", **resp}
 
-    if stall or p99 >= 5000:
-        return {"safe": False, "reason": "sequencer_stall",  "base_p99_ms": p99, "revert_ratio": round(rev, 4)}
-    if rev >= 0.30 or p99 > 500:
-        return {"safe": False, "reason": "high_revert",      "base_p99_ms": p99, "revert_ratio": round(rev, 4)}
-    if rev >= 0.10 or p99 > 200:
-        return {"safe": False, "reason": "elevated_revert",  "base_p99_ms": p99, "revert_ratio": round(rev, 4)}
-
-    return {"safe": True, "reason": "ok", "base_p99_ms": p99, "revert_ratio": round(rev, 4)}
+    return {"safe": True, "reason": "ok", **resp}
 
 
 @app.get("/v1/price", summary="Current x402 pricing (surge during MEV storms)", include_in_schema=True)
 async def get_price(request: Request):
-    # Silicon DNA: fingerprint paying agent (x402 already verified payment)
-    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
-    if _x_pay:
-        try:
-            from x402.http.utils import decode_payment_signature_header
-            _pl = decode_payment_signature_header(_x_pay)
-            _fa = (_pl.payload.get("authorization") or {}).get("from") or                   _pl.payload.get("from_address") or _pl.payload.get("from") or ""
-            if _fa:
-                _save_agent_fingerprint(_fa, str(request.url.path))
-        except Exception:
-            pass
-    metrics, health, _ = _read_latest()
+    _fingerprint_from_payment(request)
+    metrics, health, _, _ = _read_latest()
     price, mult = _surge_price(metrics, health)
     rec = _recommendation(metrics, health)
     return {
@@ -723,32 +819,19 @@ def _preflight_decision(chain: str, metrics: dict, health: dict | None, eth_sig:
 
 @app.post("/v1/preflight", summary="Deterministic pre-flight decision — PASS / DEGRADED / FAIL with evidence")
 async def preflight(request: Request):
-    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
-    if _x_pay:
-        try:
-            from x402.http.utils import decode_payment_signature_header
-            _pl = decode_payment_signature_header(_x_pay)
-            _fa = (_pl.payload.get("authorization") or {}).get("from") or \
-                  _pl.payload.get("from_address") or _pl.payload.get("from") or ""
-            if _fa:
-                _save_agent_fingerprint(_fa, str(request.url.path))
-        except Exception:
-            pass
+    _fingerprint_from_payment(request)
     try:
         body = await request.json()
     except Exception:
         body = {}
     chain = (body.get("chain") or "base").lower().strip()
-    valid_chains = set(UPSTREAM_RPCS) if "UPSTREAM_RPCS" in dir() else {
-        "base", "arbitrum", "optimism", "zksync", "scroll", "mantle",
-        "linea", "blast", "mode", "taiko", "polygon_zkevm", "casper",
-    }
+    valid_chains = set(UPSTREAM_RPCS)
     if chain not in valid_chains:
         return JSONResponse(status_code=400, content={
             "error": f"unknown chain: {chain}",
             "supported": sorted(valid_chains),
         })
-    metrics, health, eth_sig = _read_latest()
+    metrics, health, eth_sig, _ = _read_latest()
     return _preflight_decision(chain, metrics, health, eth_sig)
 
 
@@ -777,17 +860,7 @@ _health_proof_client = httpx.AsyncClient(timeout=3.0)
 
 @app.get("/v1/health-proof", summary="Cryptographic proof of node health — verifiable HMAC commitment")
 async def health_proof(request: Request):
-    _x_pay = request.headers.get("X-PAYMENT") or request.headers.get("x-payment")
-    if _x_pay:
-        try:
-            from x402.http.utils import decode_payment_signature_header
-            _pl = decode_payment_signature_header(_x_pay)
-            _fa = (_pl.payload.get("authorization") or {}).get("from") or \
-                  _pl.payload.get("from_address") or _pl.payload.get("from") or ""
-            if _fa:
-                _save_agent_fingerprint(_fa, str(request.url.path))
-        except Exception:
-            pass
+    _fingerprint_from_payment(request)
     try:
         r = await _health_proof_client.get(_HEALTH_PROOF_URL)
         try:
@@ -798,6 +871,98 @@ async def health_proof(request: Request):
     except Exception as e:
         return JSONResponse(status_code=502, content={"error": "health_proof_upstream_error", "detail": str(e)})
 
+
+@app.get("/v1/correlation", summary="12x12 cross-chain correlation matrix R_xy and Frobenius anomaly score A(t)")
+async def get_correlation(request: Request):
+    _fingerprint_from_payment(request)
+    result = _read_latest()
+    corr = result[3] if len(result) > 3 else None
+    if not corr:
+        return JSONResponse(status_code=503, content={
+            "error": "correlation_data_not_ready",
+            "detail": "Cross-chain correlation matrix requires min 10 samples per chain. Builds up ~30s after probe starts.",
+        })
+    return {
+        "matrix": corr.get("matrix", {}),
+        "max_correlation": corr.get("max_correlation", 0),
+        "sync_pairs": corr.get("sync_pairs", []),
+        "sync_pair_count": corr.get("sync_pair_count", 0),
+        "anomaly_score": corr.get("anomaly_score", 0),
+        "anomaly_flag": corr.get("anomaly_flag", False),
+        "baseline_samples": corr.get("baseline_samples", 0),
+        "chains_active": corr.get("chains_active", 0),
+        "window_samples": corr.get("window_samples", 0),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": "rtt.phoenix-ai.work",
+    }
+
+
+
+@app.get("/v1/demo/safe", summary="FREE demo — safe/unsafe check (limited data, 100/day/IP)",
+         tags=["demo"], include_in_schema=True)
+async def demo_safe(request: Request):
+    """Free pre-flight safety check with limited data. No payment required.
+    Returns safe=true/false + reason. Full details (P99, revert ratio, correlation)
+    available via paid /v1/safe endpoint ($0.01 USDC).
+    Rate limit: 100 calls per IP per UTC day."""
+    ip = request.headers.get("x-real-ip", request.client.host if request.client else "0.0.0.0")
+    if not _demo_rate_ok(ip):
+        return JSONResponse(status_code=429, content={
+            "error": "demo_limit_exceeded",
+            "message": "Free tier: 100 calls/day. Pay $0.01 USDC for unlimited access.",
+            "upgrade": "GET /v1/safe (x402 payment)",
+            "limit": _DEMO_DAILY_LIMIT,
+        })
+    chain = (request.query_params.get("chain") or "base").lower().strip()
+    if chain not in _SAFE_VALID_CHAINS:
+        return JSONResponse(status_code=400, content={
+            "error": f"unknown chain: {chain}", "supported": sorted(_SAFE_VALID_CHAINS),
+        })
+    metrics, health, _, _ = _read_latest()
+    r = metrics.get(chain, {})
+    p99 = r.get("p99_ms", 0)
+    stall = r.get("stall_flag", False)
+    ts = r.get("_ts", 0)
+    is_l1 = chain in _L1_CHAINS
+    stall_thresh = 10000 if is_l1 else 5000
+    high_thresh = 2000 if is_l1 else 500
+
+    safe = True
+    reason = "ok"
+    if ts and (time.time() - ts) > 30:
+        safe, reason = False, "data_stale"
+    elif stall or p99 >= stall_thresh:
+        safe, reason = False, "sequencer_stall"
+    elif p99 > high_thresh:
+        safe, reason = False, "high_latency"
+
+    corr_data = _read_latest()[3]
+
+    teaser = {
+        "p99_latency_ms": "HIDDEN_IN_DEMO — pay $0.01 for real-time P99",
+        "revert_ratio": "HIDDEN_IN_DEMO — Base+Arb revert data via /v1/safe",
+        "correlation_pairs": corr_data.get("sync_pair_count", 0) if corr_data else 0,
+        "anomaly_score": "HIDDEN_IN_DEMO — Frobenius A(t) via /v1/correlation",
+        "chains_monitored": 12,
+        "update_interval_s": 2,
+        "silicon_dna_layers": 9,
+        "endpoints_available": {
+            "/v1/safe": "$0.01 — full P99, revert ratio, per-chain query",
+            "/v1/health": "$0.01 — all 12 chains snapshot",
+            "/v1/correlation": "$0.01 — 12x12 R_xy matrix + anomaly detection",
+            "/v1/classify": "$0.01 — HUMAN / LEGIT_AGENT / MALICIOUS_BOT",
+            "/v1/preflight": "$0.01 — PASS/DEGRADED/FAIL with evidence_id",
+        },
+    }
+
+    return {
+        "safe": safe,
+        "reason": reason,
+        "chain": chain,
+        "demo": True,
+        "teaser": teaser,
+        "upgrade": "GET /api/v1/safe — full P99, revert ratio, correlation ($0.01 USDC via x402)",
+    }
 
 @app.get("/", include_in_schema=False)
 async def root():
