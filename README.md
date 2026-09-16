@@ -27,7 +27,8 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
                     ├── 12-chain RTT probe (2s interval)
                     ├── BLAKE3+Ed25519 integrity signing
                     ├── Isolation Forest anomaly scoring
-                    └── eBPF XDP enforcement (prog 5437, live)
+                    ├── Surge pricing daemon (3-tier: $0.01/$0.03/$0.10)
+                    └── eBPF XDP enforcement (prog 6293, live)
 ```
 
 ## Distribution Channels
@@ -35,8 +36,11 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
 | Channel | Status | How agents find us |
 |---------|--------|-------------------|
 | **MCP Registry** | **Published** | AI coding assistants discover `preflight_network_health` tool semantically |
+| **MCP Discovery** | **Live** | `/.well-known/mcp.json` — 5 tools (1 free + 4 paid) for LLM agent auto-discovery |
+| **npm SDK** | **Published** | `@phoenix-zero/preflight` — 3-line integration with `createPhoenixTool()` for AgentKit/LangChain |
 | **Olas Mech** | **Code ready** (on-chain pending) | DeFi agents find us in Mech marketplace (425 daily active agents) |
 | **Direct x402** | **Live** | Any agent calls `rtt.phoenix-ai.work` with x402 payment |
+| **Free Demo** | **Live** | `/api/v1/demo/safe` — 100 calls/IP/day, no payment needed |
 | **RPC Gateway** | **Live** | Agent uses our URL as RPC endpoint — doesn't know Phoenix exists |
 
 ## Chains Monitored
@@ -65,11 +69,14 @@ Casper is included as an L1 reference chain — the autonomous `casper-agent` se
 # Try it — returns 402 Payment Required with x402 challenge
 curl -i https://rtt.phoenix-ai.work/api/v1/health
 
+# Free demo endpoint (100/day/IP, no payment)
+curl https://rtt.phoenix-ai.work/api/v1/demo/safe
+
 # Free health endpoint (no payment)
 curl https://rtt.phoenix-ai.work/api/health
 ```
 
-### Paid Endpoints ($0.01 USDC each)
+### Paid Endpoints ($0.01 USDC each, surge pricing: $0.01/$0.03/$0.10)
 
 | Endpoint | Description |
 |----------|-------------|
@@ -79,7 +86,18 @@ curl https://rtt.phoenix-ai.work/api/health
 | `/api/v1/price` | Pricing with MEV surge multiplier |
 | `/api/v1/chains/{chain}` | Single-chain telemetry |
 | `/api/v1/classify` | Agent classification (HUMAN/LEGIT_AGENT/MALICIOUS_BOT) |
+| `/api/v1/correlation` | 12×12 cross-chain Pearson R_xy matrix + Frobenius anomaly score |
 | `/api/v1/health-proof` | ZK-lite verifiable proof of node health |
+
+### Free Endpoints (no payment required)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/demo/safe` | Safety check with limited data (100/day/IP) — `{safe, reason, chain, demo: true}` |
+| `GET /api/health` | Node health status |
+| `GET /.well-known/mcp.json` | MCP 1.0 tool discovery (5 tools) |
+| `GET /.well-known/x402` | x402 V2 agent discovery metadata |
+| `GET /api/v1/openapi.json` | OpenAPI 3.0 spec (all 9 endpoints) |
 
 ## Components
 
@@ -99,11 +117,11 @@ curl https://rtt.phoenix-ai.work/api/health
 
 ### XDP Threat Filter (LIVE since Aug 28, 2026)
 
-eBPF XDP program (`prog id 5437`) on `eth0` drops malicious packets before the TCP stack (~5-20µs on virtio_net generic mode). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
+eBPF XDP program (`prog id 6293`) on `eth0` drops malicious packets before the TCP stack (~5-20µs on virtio_net generic mode). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
 
-### LSM Agent Guard (compiled, kernel-ready)
+### LSM Agent Guard (PRODUCTION since Sep 8, 2026)
 
-BPF LSM hooks create a per-agent syscall sandbox:
+BPF LSM program (`prog 59`, kernel boot `lsm=landlock,lockdown,yama,integrity,apparmor,bpf`). Sandboxes `casper-agent` service:
 - **Block execve** — agent can't spawn child processes
 - **Restrict connect** — only ports 443 (HTTPS) and 8545 (RPC)
 - **File access** — limited to agent's working directory
@@ -128,6 +146,24 @@ npm install -g phoenix-mcp-server
 ```
 
 **Tool:** `preflight_network_health` — returns PASS / DEGRADED / FAIL with kernel-level evidence.
+
+## npm SDK — `@phoenix-zero/preflight`
+
+3-line integration for bot developers:
+
+```javascript
+const { PhoenixPreflight } = require("@phoenix-zero/preflight");
+const phoenix = new PhoenixPreflight();
+
+// Free demo — no payment needed
+const result = await phoenix.checkSafe("base");
+// { safe: true, reason: "ok", chain: "base", demo: true }
+
+// For AgentKit / LangChain — drop-in tool
+const { createPhoenixTool } = require("@phoenix-zero/preflight");
+const tool = createPhoenixTool();
+// tool.name = "phoenix_preflight_safety"
+```
 
 ## RPC Gateway (Transparent Proxy)
 
@@ -166,8 +202,8 @@ curl localhost:3002/                  # → service info
 
 ## Security Stack
 
-- **eBPF XDP** — kernel-speed threat response (live, prog 5437)
-- **eBPF LSM** — per-agent syscall sandbox (compiled)
+- **eBPF XDP** — kernel-speed threat response (live, prog 6293)
+- **eBPF LSM** — per-agent syscall sandbox (PRODUCTION, prog 59)
 - **ML-KEM-768** (NIST FIPS 203) post-quantum key exchange
 - **BLAKE3 + Ed25519** integrity signing on all telemetry
 - **14-layer bot detection** — CPU jitter, Spearman correlation, Argon2 PoW, Frankenstein headers, Sybil clustering, Privacy Pass
@@ -175,10 +211,10 @@ curl localhost:3002/                  # → service info
 
 ## Test Suite
 
-- **Main repo:** 29 test files, 581 passed, 0 failed, 1 skipped
+- **Main repo:** 31 test files, 595 passed, 0 failed
 - **Hackathon repo:** 3 test suites, 31 passed (gateway 21 + MCP server 10)
-- **Python tests:** 8 passed (gateway config)
-- **Total: 620+ tests**
+- **Python tests:** 69 passed (XDP 19 + LSM 31 + sensor 19)
+- **Total: 695+ tests**
 
 ## Verified Revenue
 
@@ -188,7 +224,7 @@ Two on-chain settlements on Base mainnet (Sep 1, 2026):
 
 ## Continuity
 
-This project extends 6+ months of production work (since March 2026). Server uptime 117+ days. 11 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
+This project extends 6+ months of production work (since March 2026). Server uptime 170+ days. 13 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
 
 ## Paper
 

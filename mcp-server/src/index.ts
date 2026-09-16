@@ -49,6 +49,17 @@ async function fetchHealth(): Promise<HealthResponse> {
   return res.json() as Promise<HealthResponse>;
 }
 
+async function fetchDemoSafe(chain?: Chain): Promise<Record<string, unknown>> {
+  const url = chain
+    ? `${PHOENIX_BASE}/api/v1/demo/safe?chain=${chain}`
+    : `${PHOENIX_BASE}/api/v1/demo/safe`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Demo endpoint returned ${res.status}`);
+  }
+  return res.json() as Promise<Record<string, unknown>>;
+}
+
 async function fetchChainHealth(chain: Chain): Promise<Record<string, unknown> | null> {
   const res = await fetch(`${PHOENIX_BASE}/api/v1/chains/${chain}`);
   if (res.status === 402) return null;
@@ -58,8 +69,47 @@ async function fetchChainHealth(chain: Chain): Promise<Record<string, unknown> |
 
 const server = new McpServer({
   name: "phoenix-zero",
-  version: "1.0.0",
+  version: "1.1.0",
 });
+
+server.tool(
+  "check_safety_free",
+  `FREE safety check for L2 networks — no payment required (100 calls/IP/day). Returns safe/unsafe verdict with reason code. Use this first to sample data before committing to paid x402 endpoints. Prevents $5-$15 gas loss on failed transactions during sequencer stalls.`,
+  {
+    chain: z
+      .enum(CHAINS)
+      .optional()
+      .describe("L2 chain to check. Defaults to Base if omitted."),
+  },
+  async ({ chain }) => {
+    try {
+      const data = await fetchDemoSafe(chain);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              { error: message, source: PHOENIX_BASE },
+              null,
+              2
+            ),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
 
 server.tool(
   "preflight_network_health",
