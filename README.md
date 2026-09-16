@@ -85,15 +85,15 @@ curl https://rtt.phoenix-ai.work/api/health
 | `/api/v1/safe` | Boolean safety check with reason code |
 | `/api/v1/price` | Pricing with MEV surge multiplier |
 | `/api/v1/chains/{chain}` | Single-chain telemetry |
-| `/api/v1/classify` | Agent classification (HUMAN/LEGIT_AGENT/MALICIOUS_BOT) |
+| `/api/v1/classify` | Agent classification: HUMAN/LEGIT_AGENT/MALICIOUS_BOT (behavioral timing, not NIC fingerprinting) |
 | `/api/v1/correlation` | 12×12 cross-chain Pearson R_xy matrix + Frobenius anomaly score |
-| `/api/v1/health-proof` | ZK-lite verifiable proof of node health |
+| `/api/v1/health-proof` | HMAC-SHA256 integrity commitment + eBPF status (not ZK — requires shared key) |
 
 ### Free Endpoints (no payment required)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/v1/demo/safe` | Safety check with limited data (100/day/IP) — `{safe, reason, chain, demo: true}` |
+| `GET /api/v1/demo/safe` | Safety check with teaser (100/day/IP) — `{safe, reason, chain, demo: true, teaser: {correlation_pairs, chains_monitored, silicon_dna_layers, endpoints_available}}` |
 | `GET /api/health` | Node health status |
 | `GET /.well-known/mcp.json` | MCP 1.0 tool discovery (5 tools) |
 | `GET /.well-known/x402` | x402 V2 agent discovery metadata |
@@ -106,7 +106,7 @@ curl https://rtt.phoenix-ai.work/api/health
 | **x402 Gateway** | `gateway/x402_gateway.py` | FastAPI payment gateway — CDP (Base) + Blocky402 (Hedera) |
 | **Multi-Chain Probe** | `probe/multi_chain_probe.py` | 12-chain RPC poller (eth_blockNumber every 2s) |
 | **WSS Distributor** | `probe/wss_distributor.py` | WebSocket broadcast with BLAKE3+Ed25519 integrity signing |
-| **Silicon DNA** | `gateway/server.ts` | 14-layer anti-bot (ML-KEM-768, Argon2 PoW, Spearman correlation) |
+| **Silicon DNA** | `gateway/server.ts` | 9-gate anti-bot (L0-L7 + L1.1/L2.5): CPU jitter, Frankenstein, SNIPER, Spearman ρ, Argon2id PoW, ML-KEM-768, eBPF, Shadow classifier |
 | **XDP Threat Filter** | `ebpf/xdp_threat_filter.c` | Kernel-speed packet drop for banned IPs |
 | **LSM Agent Guard** | `ebpf/lsm_agent_guard.c` | Syscall-level sandbox: block execve, restrict network |
 | **MCP Server** | `mcp-server/` | Model Context Protocol server for AI agent discovery |
