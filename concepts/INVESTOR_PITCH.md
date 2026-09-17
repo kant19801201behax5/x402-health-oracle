@@ -39,7 +39,7 @@ Three layers, each deployed:
 
 **x402 micropayments:** Every API query costs $0.01 USDC. No subscriptions, no API keys for basic access — pure per-query monetization via the x402 HTTP 402 protocol.
 
-- 7 paid endpoints (health, safe, price, chains, classify, health-proof)
+- 8 paid endpoints (health, safe, price, chains, classify, health-proof, correlation, preflight)
 - **Dual payment rails:** Coinbase CDP (Base mainnet) + Blocky402 (Hedera testnet)
 - First revenue: $0.02 USDC (Sep 1, 2026) — two verified on-chain settlements on Base
 
