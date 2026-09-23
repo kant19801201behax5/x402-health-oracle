@@ -13,7 +13,7 @@ This project extends [SiliconDNA-PhoenixZero](https://github.com/kant19801201beh
 | Isolation Forest anomaly scoring | Deployed | numpy-only, no sklearn |
 | x402 gateway (Base USDC, CDP facilitator) | Live, 2 settlements | $0.02 USDC revenue (Sep 1) |
 | eBPF XDP threat filter | Live since Aug 28 | `ip link show eth0` → xdpgeneric, prog id 6293 |
-| eBPF LSM agent guard | **PRODUCTION** since Sep 8 | prog 59, kernel boot `lsm=landlock,lockdown,yama,integrity,apparmor,bpf` |
+| eBPF LSM agent guard | **PRODUCTION** since Sep 8 | progs 46515–46517, kernel boot `lsm=landlock,lockdown,yama,integrity,apparmor,bpf` |
 | Zenodo paper | Published Sep 2 | DOI: [10.5281/zenodo.22239862](https://doi.org/10.5281/zenodo.22239862) |
 | Casper Agentic Buildathon | Finalist | ETHGlobal history |
 

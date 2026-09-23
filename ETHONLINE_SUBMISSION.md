@@ -18,7 +18,7 @@ Phoenix Zero is a production L2 health oracle that gives AI agents nanosecond-pr
 - Olas Mech tool interface for DeFi agent marketplace
 
 **Pre-existing (built since March 2026):**
-- eBPF XDP threat filter (live since Aug 28, prog 5437)
+- eBPF XDP threat filter (live since Aug 28, prog 6293)
 - x402 payment gateway — dual facilitator: CDP (Base USDC) + Blocky402 (Hedera HBAR)
 - 12-chain multi-chain probe with 2s sampling
 - BLAKE3 + Ed25519 integrity signing
@@ -44,7 +44,7 @@ Phoenix Zero's primary payment rail is USDC on Base via Coinbase CDP facilitator
 We published `phoenix-mcp-server` to npm and the MCP Registry as `io.github.kant19801201behax5/phoenix-mcp-server`. The MCP tool `preflight_network_health` lets any AI coding assistant (Claude, Cursor, Windsurf) discover and use our health oracle semantically. When an agent asks "is Base safe for a transaction?", it finds our tool in the registry, calls it, and gets a PASS/DEGRADED/FAIL verdict with kernel-level evidence. This is literally "help an agent use your project" — zero configuration, pure discovery.
 
 ### 4. Hedera — ♻️ Continuity ($1K, 1 winner)
-Phoenix Zero is a 6-month production project (since March 2026) that integrated Hedera during ETHOnline. Blocky402 facilitator enables HBAR micropayments alongside existing Base USDC rail. 11 production services, 117+ days uptime, 620+ tests. The Hedera integration specifically adds a second payment network to our existing x402 infrastructure.
+Phoenix Zero is a 6-month production project (since March 2026) that integrated Hedera during ETHOnline. Blocky402 facilitator enables HBAR micropayments alongside existing Base USDC rail. 11 production services, 117+ days uptime, 680+ tests. The Hedera integration specifically adds a second payment network to our existing x402 infrastructure.
 
 ---
 
@@ -82,7 +82,7 @@ curl -i https://rtt.phoenix-ai.work/api/v1/health
 [SHOW: npm package page, MCP Registry]
 
 ### 2:20-2:30 — Close
-"Phoenix Zero. Kernel-level intelligence. x402 micropayments. 12 chains. 620 tests. Live in production. Thank you."
+"Phoenix Zero. Kernel-level intelligence. x402 micropayments. 12 chains. 683 tests. Live in production. Thank you."
 
 ---
 
