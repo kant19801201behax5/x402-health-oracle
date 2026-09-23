@@ -69,7 +69,7 @@ async function fetchChainHealth(chain: Chain): Promise<Record<string, unknown> |
 
 const server = new McpServer({
   name: "phoenix-zero",
-  version: "1.1.0",
+  version: "1.2.0",
 });
 
 server.tool(
@@ -80,6 +80,12 @@ server.tool(
       .enum(CHAINS)
       .optional()
       .describe("L2 chain to check. Defaults to Base if omitted."),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
   async ({ chain }) => {
     try {
@@ -125,6 +131,12 @@ server.tool(
       .describe(
         "health_check = PASS/DEGRADED/FAIL verdict (free). rtt_ns = nanosecond RTT (x402 $0.01). revert_ratio = transaction revert rate (x402 $0.01)."
       ),
+  },
+  {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
   },
   async ({ chain, metric }) => {
     try {

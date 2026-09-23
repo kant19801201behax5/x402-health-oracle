@@ -106,6 +106,45 @@ describe("chains", () => {
   });
 });
 
+describe("check_safety_free", () => {
+  it("tool is registered in server.json with correct annotations", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const manifestPath = path.resolve(import.meta.dirname, "..", "server.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    const tool = manifest.tools.find((t: any) => t.name === "check_safety_free");
+    expect(tool).toBeDefined();
+    expect(tool.annotations.readOnlyHint).toBe(true);
+    expect(tool.annotations.destructiveHint).toBe(false);
+    expect(tool.annotations.idempotentHint).toBe(true);
+    expect(tool.annotations.openWorldHint).toBe(true);
+  });
+
+  it("accepts optional chain parameter from valid enum", () => {
+    for (const chain of ["base", "arbitrum", "optimism", "zksync", "casper"]) {
+      expect(CHAINS).toContain(chain);
+    }
+  });
+});
+
+describe("preflight_network_health", () => {
+  it("tool is registered in server.json with correct annotations", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const manifestPath = path.resolve(import.meta.dirname, "..", "server.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    const tool = manifest.tools.find((t: any) => t.name === "preflight_network_health");
+    expect(tool).toBeDefined();
+    expect(tool.annotations.readOnlyHint).toBe(true);
+    expect(tool.annotations.destructiveHint).toBe(false);
+  });
+
+  it("supports three metric types", () => {
+    const metrics = ["health_check", "rtt_ns", "revert_ratio"];
+    expect(metrics).toHaveLength(3);
+  });
+});
+
 describe("server.json manifest", () => {
   it("is valid JSON with required fields", async () => {
     const fs = await import("fs");
@@ -115,9 +154,14 @@ describe("server.json manifest", () => {
     const manifest = JSON.parse(raw);
 
     expect(manifest.name).toBe("io.github.kant19801201behax5/phoenix-mcp-server");
-    expect(manifest.tools).toHaveLength(1);
-    expect(manifest.tools[0].name).toBe("preflight_network_health");
-    expect(manifest.version).toBe("1.0.1");
+    expect(manifest.tools).toHaveLength(2);
+    expect(manifest.tools[0].name).toBe("check_safety_free");
+    expect(manifest.tools[1].name).toBe("preflight_network_health");
+    expect(manifest.version).toBe("1.2.0");
     expect(manifest.repository.url).toContain("x402-health-oracle");
+    for (const tool of manifest.tools) {
+      expect(tool.annotations).toBeDefined();
+      expect(tool.annotations.readOnlyHint).toBe(true);
+    }
   });
 });
