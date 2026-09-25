@@ -1,26 +1,28 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.kant19801201behax5/phoenix-mcp-server",
-  "title": "Phoenix Zero — L2 Health Oracle",
-  "description": "Pre-flight L2 health check using kernel-level eBPF telemetry. PASS/DEGRADED/FAIL verdict.",
+  "title": "Phoenix Zero — Execution Oracle for L2s",
+  "description": "Before sending a transaction on an L2: PASS/DEGRADED/FAIL for the chosen chain from per-chain measurements (every ~2 s, 2-3 RPC nodes). Free delayed verdict; live data via x402.",
   "repository": {
     "url": "https://github.com/kant19801201behax5/x402-health-oracle",
     "source": "github"
   },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "phoenix-mcp-server",
-      "version": "1.2.0",
-      "transport": { "type": "stdio" }
+      "version": "1.3.0",
+      "transport": {
+        "type": "stdio"
+      }
     }
   ],
   "tools": [
     {
       "name": "check_safety_free",
-      "description": "FREE safety check for L2 networks (100 calls/IP/day). Returns safe/unsafe verdict with reason code for any of 12 chains. No payment required.",
+      "description": "FREE safety check for an L2 (100 calls/IP/day): safe/unsafe with reason for the chosen chain, delayed ~60 s. Live verdict: paid x402 GET /api/v1/safe.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -30,7 +32,7 @@
     },
     {
       "name": "preflight_network_health",
-      "description": "Determine whether an L2 network is suitable for transaction execution using kernel-level eBPF telemetry. Returns PASS/DEGRADED/FAIL with RTT, revert ratio, and timestamp evidence. Covers 12 L2 chains. health_check metric is free; rtt_ns and revert_ratio require x402 $0.01.",
+      "description": "PASS/DEGRADED/FAIL for the chosen L2 from its own measurements (latency across 2-3 RPC nodes every ~2 s; revert ratio for Base/Arbitrum). Free answer delayed ~60 s; live latency/revert_ratio via x402 ($0.01 USDC on Base, Polygon or Arbitrum).",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

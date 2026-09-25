@@ -1,167 +1,67 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { CHAINS, verdictFromChain, server } from "../src/index";
 
-const CHAINS = [
-  "base", "arbitrum", "optimism", "zksync", "scroll",
-  "mantle", "linea", "blast", "mode", "taiko",
-  "polygon_zkevm", "casper",
-];
+// Tests exercise the REAL server code (earlier versions tested a local copy of old logic,
+// which is how a verdict derived from node liveness instead of the chain went unnoticed).
 
-function deriveVerdict(data: {
-  health: string;
-  safe: boolean;
-  last_measurement_s: number;
-}) {
-  if (data.health !== "operational") {
-    return { verdict: "FAIL", reason: `service ${data.health}` };
-  }
-  if (data.last_measurement_s > 30) {
-    return {
-      verdict: "DEGRADED",
-      reason: `stale data: last measurement ${data.last_measurement_s}s ago`,
-    };
-  }
-  if (!data.safe) {
-    return { verdict: "FAIL", reason: "unsafe conditions detected by kernel telemetry" };
-  }
-  return { verdict: "PASS", reason: "operational, data fresh, safe to execute" };
-}
-
-describe("deriveVerdict", () => {
-  it("returns PASS for healthy operational state", () => {
-    const result = deriveVerdict({
-      health: "operational",
-      safe: true,
-      last_measurement_s: 0,
-    });
-    expect(result.verdict).toBe("PASS");
+describe("verdictFromChain — verdict comes from the chosen chain's own state", () => {
+  it("PASS when the chain is safe", () => {
+    expect(verdictFromChain(true, "ok")).toEqual({ verdict: "PASS", reason: "ok" });
   });
-
-  it("returns FAIL when health is not operational", () => {
-    const result = deriveVerdict({
-      health: "degraded",
-      safe: true,
-      last_measurement_s: 0,
-    });
-    expect(result.verdict).toBe("FAIL");
-    expect(result.reason).toContain("degraded");
+  it("DEGRADED on elevated latency or revert", () => {
+    expect(verdictFromChain(false, "elevated_latency").verdict).toBe("DEGRADED");
+    expect(verdictFromChain(false, "elevated_revert").verdict).toBe("DEGRADED");
   });
-
-  it("returns DEGRADED when data is stale (>30s)", () => {
-    const result = deriveVerdict({
-      health: "operational",
-      safe: true,
-      last_measurement_s: 45,
-    });
-    expect(result.verdict).toBe("DEGRADED");
-    expect(result.reason).toContain("stale");
+  it("FAIL on high latency, high revert, stall, stale or warm-up", () => {
+    for (const r of ["high_latency", "high_revert", "sequencer_stall", "data_stale", "warming_up"]) {
+      expect(verdictFromChain(false, r).verdict).toBe("FAIL");
+    }
   });
-
-  it("returns FAIL when safe is false", () => {
-    const result = deriveVerdict({
-      health: "operational",
-      safe: false,
-      last_measurement_s: 2,
-    });
-    expect(result.verdict).toBe("FAIL");
-    expect(result.reason).toContain("unsafe");
-  });
-
-  it("prioritizes health check over staleness", () => {
-    const result = deriveVerdict({
-      health: "down",
-      safe: true,
-      last_measurement_s: 999,
-    });
-    expect(result.verdict).toBe("FAIL");
-    expect(result.reason).toContain("down");
-  });
-
-  it("prioritizes staleness over safe flag", () => {
-    const result = deriveVerdict({
-      health: "operational",
-      safe: false,
-      last_measurement_s: 60,
-    });
-    expect(result.verdict).toBe("DEGRADED");
-    expect(result.reason).toContain("stale");
+  it("never PASS when safe is missing or not a boolean true", () => {
+    expect(verdictFromChain(undefined, undefined).verdict).toBe("FAIL");
+    expect(verdictFromChain(null, "ok").verdict).toBe("FAIL");
+    expect(verdictFromChain("true", "ok").verdict).toBe("FAIL");
   });
 });
 
 describe("chains", () => {
-  it("has exactly 12 chains", () => {
+  it("has exactly 12 unique chains incl. the main L2s", () => {
     expect(CHAINS).toHaveLength(12);
-  });
-
-  it("includes all expected L2 networks", () => {
-    expect(CHAINS).toContain("base");
-    expect(CHAINS).toContain("arbitrum");
-    expect(CHAINS).toContain("optimism");
-    expect(CHAINS).toContain("zksync");
-    expect(CHAINS).toContain("casper");
-  });
-
-  it("has no duplicates", () => {
-    const unique = new Set(CHAINS);
-    expect(unique.size).toBe(CHAINS.length);
+    expect(new Set(CHAINS).size).toBe(12);
+    for (const c of ["base", "arbitrum", "optimism", "zksync", "casper"]) expect(CHAINS).toContain(c);
   });
 });
 
-describe("check_safety_free", () => {
-  it("tool is registered in server.json with correct annotations", async () => {
-    const fs = await import("fs");
-    const path = await import("path");
-    const manifestPath = path.resolve(import.meta.dirname, "..", "server.json");
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-    const tool = manifest.tools.find((t: any) => t.name === "check_safety_free");
-    expect(tool).toBeDefined();
-    expect(tool.annotations.readOnlyHint).toBe(true);
-    expect(tool.annotations.destructiveHint).toBe(false);
-    expect(tool.annotations.idempotentHint).toBe(true);
-    expect(tool.annotations.openWorldHint).toBe(true);
+describe("registered tools (real server instance)", () => {
+  const tools = (server as any)._registeredTools as Record<string, any>;
+  it("registers exactly the two tools with input schemas", () => {
+    expect(Object.keys(tools).sort()).toEqual(["check_safety_free", "preflight_network_health"]);
+    for (const name of Object.keys(tools)) expect(tools[name].inputSchema).toBeDefined();
   });
-
-  it("accepts optional chain parameter from valid enum", () => {
-    for (const chain of ["base", "arbitrum", "optimism", "zksync", "casper"]) {
-      expect(CHAINS).toContain(chain);
+  it("tools are read-only", () => {
+    for (const name of Object.keys(tools)) {
+      expect(tools[name].annotations.readOnlyHint).toBe(true);
+      expect(tools[name].annotations.destructiveHint).toBe(false);
     }
   });
-});
-
-describe("preflight_network_health", () => {
-  it("tool is registered in server.json with correct annotations", async () => {
-    const fs = await import("fs");
-    const path = await import("path");
-    const manifestPath = path.resolve(import.meta.dirname, "..", "server.json");
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-    const tool = manifest.tools.find((t: any) => t.name === "preflight_network_health");
-    expect(tool).toBeDefined();
-    expect(tool.annotations.readOnlyHint).toBe(true);
-    expect(tool.annotations.destructiveHint).toBe(false);
-  });
-
-  it("supports three metric types", () => {
-    const metrics = ["health_check", "rtt_ns", "revert_ratio"];
-    expect(metrics).toHaveLength(3);
+  it("descriptions make no claims we do not measure", () => {
+    for (const name of Object.keys(tools)) {
+      const d: string = tools[name].description;
+      expect(d).not.toMatch(/packet[- ]loss|XDP|nanosecond|\$5-\$15/i);
+    }
   });
 });
 
 describe("server.json manifest", () => {
-  it("is valid JSON with required fields", async () => {
+  it("matches the code: name, version, tools, read-only", async () => {
     const fs = await import("fs");
     const path = await import("path");
-    const manifestPath = path.resolve(import.meta.dirname, "..", "server.json");
-    const raw = fs.readFileSync(manifestPath, "utf-8");
-    const manifest = JSON.parse(raw);
-
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "..", "server.json"), "utf-8"));
     expect(manifest.name).toBe("io.github.kant19801201behax5/phoenix-mcp-server");
-    expect(manifest.tools).toHaveLength(2);
-    expect(manifest.tools[0].name).toBe("check_safety_free");
-    expect(manifest.tools[1].name).toBe("preflight_network_health");
-    expect(manifest.version).toBe("1.2.0");
+    expect(manifest.version).toBe("1.3.0");
+    expect(manifest.packages[0].version).toBe("1.3.0");
+    expect(manifest.tools.map((t: any) => t.name)).toEqual(["check_safety_free", "preflight_network_health"]);
     expect(manifest.repository.url).toContain("x402-health-oracle");
-    for (const tool of manifest.tools) {
-      expect(tool.annotations).toBeDefined();
-      expect(tool.annotations.readOnlyHint).toBe(true);
-    }
+    for (const tool of manifest.tools) expect(tool.annotations.readOnlyHint).toBe(true);
   });
 });

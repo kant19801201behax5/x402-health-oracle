@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const PHOENIX_BASE = process.env.PHOENIX_API_URL ?? "https://rtt.phoenix-ai.work";
 
-const CHAINS = [
+export const CHAINS = [
   "base", "arbitrum", "optimism", "zksync", "scroll",
   "mantle", "linea", "blast", "mode", "taiko",
   "polygon_zkevm", "casper",
@@ -14,219 +14,102 @@ const CHAINS = [
 
 type Chain = (typeof CHAINS)[number];
 
-interface HealthResponse {
-  health: string;
-  safe: boolean;
-  mode: string;
-  uptime_s: number;
-  last_measurement_s: number;
-  version: string;
-}
-
 type Verdict = "PASS" | "DEGRADED" | "FAIL";
 
-function deriveVerdict(data: HealthResponse): {
-  verdict: Verdict;
-  reason: string;
-} {
-  if (data.health !== "operational") {
-    return { verdict: "FAIL", reason: `service ${data.health}` };
-  }
-  if (data.last_measurement_s > 30) {
-    return { verdict: "DEGRADED", reason: `stale data: last measurement ${data.last_measurement_s}s ago` };
-  }
-  if (!data.safe) {
-    return { verdict: "FAIL", reason: "unsafe conditions detected by kernel telemetry" };
-  }
-  return { verdict: "PASS", reason: "operational, data fresh, safe to execute" };
+// Verdict for ONE chain, derived from that chain's own safe/reason (oracle /v1/demo/safe).
+// 1.2.x derived it from /api/health (this node's liveness), which said PASS for any chain
+// whenever the server was up — fixed in 1.3.0.
+export function verdictFromChain(safe: unknown, reason: unknown): { verdict: Verdict; reason: string } {
+  const r = typeof reason === "string" ? reason : "unknown";
+  if (safe === true) return { verdict: "PASS", reason: r };
+  if (r === "elevated_latency" || r === "elevated_revert") return { verdict: "DEGRADED", reason: r };
+  return { verdict: "FAIL", reason: r }; // high_latency, high_revert, sequencer_stall, data_stale, warming_up, unknown
 }
 
-async function fetchHealth(): Promise<HealthResponse> {
-  const res = await fetch(`${PHOENIX_BASE}/api/health`);
-  if (!res.ok) {
-    throw new Error(`Phoenix API returned ${res.status}`);
-  }
-  return res.json() as Promise<HealthResponse>;
-}
-
-async function fetchDemoSafe(chain?: Chain): Promise<Record<string, unknown>> {
-  const url = chain
-    ? `${PHOENIX_BASE}/api/v1/demo/safe?chain=${chain}`
-    : `${PHOENIX_BASE}/api/v1/demo/safe`;
-  const res = await fetch(url);
+async function fetchDemoSafe(chain: Chain): Promise<Record<string, unknown>> {
+  const res = await fetch(`${PHOENIX_BASE}/api/v1/demo/safe?chain=${chain}`);
   if (!res.ok) {
     throw new Error(`Demo endpoint returned ${res.status}`);
   }
   return res.json() as Promise<Record<string, unknown>>;
 }
 
-async function fetchChainHealth(chain: Chain): Promise<Record<string, unknown> | null> {
-  const res = await fetch(`${PHOENIX_BASE}/api/v1/chains/${chain}`);
-  if (res.status === 402) return null;
-  if (!res.ok) return null;
-  return res.json() as Promise<Record<string, unknown>>;
-}
+const PAYMENT_RAILS = [
+  { network: "Base (eip155:8453)", asset: "USDC" },
+  { network: "Polygon (eip155:137)", asset: "USDC" },
+  { network: "Arbitrum One (eip155:42161)", asset: "USDC" },
+];
 
-const server = new McpServer({
-  name: "phoenix-zero",
-  version: "1.2.0",
+const text = (obj: unknown, isError = false) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
+  ...(isError ? { isError: true } : {}),
 });
 
-server.tool(
+export const server = new McpServer({
+  name: "phoenix-zero",
+  version: "1.3.0",
+});
+
+server.registerTool(
   "check_safety_free",
-  `FREE safety check for L2 networks — no payment required (100 calls/IP/day). Returns safe/unsafe verdict with reason code. Use this first to sample data before committing to paid x402 endpoints. Prevents $5-$15 gas loss on failed transactions during sequencer stalls.`,
   {
-    chain: z
-      .enum(CHAINS)
-      .optional()
-      .describe("L2 chain to check. Defaults to Base if omitted."),
-  },
-  {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
+    description:
+      "FREE safety check for an L2 before sending a transaction (100 calls/IP/day). Returns safe/unsafe with a reason code for the chosen chain. The verdict is delayed ~60 s; the live verdict is the paid x402 endpoint GET /api/v1/safe ($0.01 USDC).",
+    inputSchema: {
+      chain: z.enum(CHAINS).optional().describe("L2 chain to check. Defaults to base."),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ chain }) => {
     try {
-      const data = await fetchDemoSafe(chain);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
-      };
+      return text(await fetchDemoSafe(chain ?? "base"));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              { error: message, source: PHOENIX_BASE },
-              null,
-              2
-            ),
-          },
-        ],
-        isError: true,
-      };
+      return text({ error: err instanceof Error ? err.message : String(err), source: PHOENIX_BASE }, true);
     }
   }
 );
 
-server.tool(
+server.registerTool(
   "preflight_network_health",
-  `Determine whether an L2 network is currently suitable for transaction execution using kernel-level network telemetry. Returns PASS, DEGRADED, or FAIL with RTT, packet-loss and timestamp evidence. Covers 12 L2 chains (Base, Arbitrum, Optimism, zkSync, Scroll, Mantle, Linea, Blast, Mode, Taiko, Polygon zkEVM, Casper). Data sourced from eBPF XDP probes with 2-second sampling interval, signed with BLAKE3+Ed25519.`,
   {
-    chain: z
-      .enum(CHAINS)
-      .optional()
-      .describe("L2 chain to check. Omit for aggregate health across all 12 chains."),
-    metric: z
-      .enum(["health_check", "rtt_ns", "revert_ratio"])
-      .default("health_check")
-      .describe(
-        "health_check = PASS/DEGRADED/FAIL verdict (free). rtt_ns = nanosecond RTT (x402 $0.01). revert_ratio = transaction revert rate (x402 $0.01)."
-      ),
-  },
-  {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
+    description:
+      "Decide whether an L2 is suitable for transaction execution right now: PASS / DEGRADED / FAIL for the chosen chain, from Phoenix Zero measurements (each chain polled every ~2 s against 2-3 independent RPC nodes; revert ratio for Base/Arbitrum; records signed BLAKE3+Ed25519). The free answer is delayed ~60 s; live data (p99 latency, revert ratio) is paid via x402 ($0.01 USDC on Base, Polygon or Arbitrum).",
+    inputSchema: {
+      chain: z.enum(CHAINS).optional().describe("L2 chain to check. Defaults to base."),
+      metric: z
+        .enum(["health_check", "latency", "revert_ratio"])
+        .default("health_check")
+        .describe("health_check = free delayed PASS/DEGRADED/FAIL. latency / revert_ratio = live values via paid x402 endpoints."),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async ({ chain, metric }) => {
+    const c: Chain = chain ?? "base";
     try {
-      const health = await fetchHealth();
-      const { verdict, reason } = deriveVerdict(health);
-
+      const demo = await fetchDemoSafe(c);
+      const { verdict, reason } = verdictFromChain(demo.safe, demo.reason);
+      const base = {
+        chain: c,
+        verdict,
+        reason,
+        delayed_s: demo.delayed_s ?? null,
+        as_of: demo.as_of ?? null,
+        source: "rtt.phoenix-ai.work",
+      };
       if (metric === "health_check") {
-        const result: Record<string, unknown> = {
-          verdict,
-          reason,
-          oracle_uptime_s: health.uptime_s,
-          last_measurement_s: health.last_measurement_s,
-          chains_monitored: CHAINS.length,
-          source: "rtt.phoenix-ai.work",
-          integrity: "BLAKE3+Ed25519 on every measurement",
-          sampling_interval: "2s",
-        };
-
-        if (chain) {
-          result.chain = chain;
-          const chainData = await fetchChainHealth(chain);
-          if (chainData) {
-            result.chain_data = chainData;
-          } else {
-            result.chain_detail = `Per-chain telemetry for ${chain} requires x402 payment ($0.01). Call: GET ${PHOENIX_BASE}/api/v1/chains/${chain}`;
-          }
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return text({ ...base, live_verdict: `GET ${PHOENIX_BASE}/api/v1/safe?chain=${c} (x402, $0.01 USDC)` });
       }
-
-      const premiumEndpoint =
-        metric === "rtt_ns"
-          ? `${PHOENIX_BASE}/api/v1/health`
-          : `${PHOENIX_BASE}/api/v1/safe`;
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                verdict,
-                reason,
-                metric_requested: metric,
-                requires_payment: true,
-                price: "$0.01 USDC",
-                payment_protocol: "x402 (HTTP 402 micropayment)",
-                endpoint: premiumEndpoint,
-                preflight_endpoint: `${PHOENIX_BASE}/api/v1/preflight`,
-                preflight_note: "POST /api/v1/preflight with {chain} body returns deterministic PASS/DEGRADED/FAIL with evidence_id proving exact network state at decision time.",
-                payment_rails: [
-                  { network: "Base mainnet (eip155:8453)", asset: "USDC" },
-                  { network: "Hedera testnet", asset: "native HBAR" },
-                ],
-                how_to_pay:
-                  "Send request to the endpoint. Server returns 402 with payment-required header containing x402 challenge. Complete payment flow to receive data.",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return text({
+        ...base,
+        metric_requested: metric,
+        requires_payment: true,
+        price: "$0.01 USDC",
+        endpoint: metric === "latency" ? `${PHOENIX_BASE}/api/v1/chains/${c}` : `${PHOENIX_BASE}/api/v1/safe?chain=${c}`,
+        payment_protocol: "x402 v2 (HTTP 402; terms in the PAYMENT-REQUIRED header and the response body)",
+        payment_rails: PAYMENT_RAILS,
+      });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                verdict: "FAIL",
-                reason: `oracle unreachable: ${message}`,
-                source: PHOENIX_BASE,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-        isError: true,
-      };
+      return text({ error: err instanceof Error ? err.message : String(err), source: PHOENIX_BASE }, true);
     }
   }
 );
@@ -236,7 +119,9 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error("Fatal:", err);
-  process.exit(1);
-});
+if (!process.env.VITEST) {
+  main().catch((err) => {
+    console.error("Fatal:", err);
+    process.exit(1);
+  });
+}
