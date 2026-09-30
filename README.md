@@ -128,7 +128,7 @@ curl https://rtt.phoenix-ai.work/api/health
 | **x402 Gateway** | `gateway/x402_gateway.py` | FastAPI payment gateway — CDP (Base, Polygon, Arbitrum) + Blocky402 (Hedera testnet) |
 | **Multi-Chain Probe** | `probe/multi_chain_probe.py` | 12-chain RPC poller (eth_blockNumber every 2s) |
 | **WSS Distributor** | `probe/wss_distributor.py` | WebSocket broadcast with BLAKE3+Ed25519 integrity signing |
-| **Silicon DNA** | `gateway/server.ts` | 9-gate anti-bot (L0-L7 + L1.1/L2.5): CPU jitter, Frankenstein, SNIPER, Spearman ρ, Argon2id PoW, ML-KEM-768, eBPF, Shadow classifier |
+| **Silicon DNA** | `gateway/server.ts` | 14-layer caller classification (L0–L13: HUMAN / LEGIT_AGENT / MALICIOUS_BOT / SYBIL): request-timing entropy, Spearman ρ, CV, header consistency (Frankenstein), Argon2id PoW, ML-KEM-768 session, Sybil cohort, session continuity |
 | **XDP Threat Filter** | `ebpf/xdp_threat_filter.c` | Kernel-speed packet drop for banned IPs |
 | **LSM Agent Guard** | `ebpf/lsm_agent_guard.c` | Syscall-level sandbox: block execve, restrict network |
 | **MCP Server** | `mcp-server/` | Model Context Protocol server for AI agent discovery |
@@ -247,7 +247,7 @@ External (non-owner) x402 settlements on Base mainnet: **$0.03 USDC** (own test 
 
 ## Continuity
 
-This project extends 6+ months of production work (since March 2026). Server uptime 170+ days. 13 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
+This project extends 6+ months of production work (since March 2026). Server uptime 170+ days. 14 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
 
 ## Paper
 
