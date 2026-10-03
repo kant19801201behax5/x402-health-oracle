@@ -6,6 +6,10 @@
 
 Live: `https://rtt.phoenix-ai.work` | npm: [`phoenix-mcp-server`](https://www.npmjs.com/package/phoenix-mcp-server) | MCP Registry: [`io.github.kant19801201behax5/phoenix-mcp-server`](https://registry.modelcontextprotocol.io)
 
+**Try it yourself** (guided, ~3 min, no wallet): https://rtt.phoenix-ai.work/?tour  
+**On-chain registry on Arbitrum:** [`0xD394fFAE51d8fB52187Cf3aE3b014Ddc80Dc7B15`](https://sepolia.arbiscan.io/address/0xD394fFAE51d8fB52187Cf3aE3b014Ddc80Dc7B15) (Arbitrum Sepolia)  
+**Signed live verdict (free, 60 s delayed):** https://rtt.phoenix-ai.work/api/v1/demo/safe?chain=arbitrum
+
 ## Problem
 
 AI agents making autonomous on-chain transactions have no way to check network health before committing funds. 64% of DeFi protocols don't verify sequencer health. Base went down for 2 hours in June 2026 with $10.95B at risk.
@@ -14,13 +18,17 @@ Existing solutions (Chainlink L2 Sequencer Feed) give binary up/down with 30-sec
 
 **What you actually buy:** network delay is visible here *before* it hits you. If a sequencer is stalling or RPC latency is spiking, your swap, bridge or x402 payment will arrive late — or not at all. Phoenix measures that delay right now and answers *act now / wait / route elsewhere*.
 
+**Measured by Phoenix (independently confirmed from public-RPC block receipts):**
+- **Base, Oct 1 2026, 08:06–08:13 UTC** — 7× the usual traffic; **26 % of transactions failed** (up to 70 % in some blocks), ~$68 of fees burned on failed transactions in 7 minutes (calm hour: 6 %). An agent sending then had 4× the risk — and its RPC node said nothing.
+- **Polygon zkEVM** — no new block since **Jul 3 2026**, yet its RPC nodes answer in ~50 ms. A latency monitor calls it healthy; Phoenix reports `chain_halted` from the chain's own block timestamps.
+
 ### Evidence base: three layers, recorded continuously
 
 | Layer | What is measured | Record types (signed BLAKE3 + Ed25519) |
 |---|---|---|
 | **L1 — kernel / physical** | eBPF kernel RTT to each chain's RPC, physical timing stats | `PHOENIX_KERNEL_RTT`, `SILICON_DNA_PHY_STATS` |
 | **L2 — RPC / network** | p95/p99 latency, stall flag, anomaly score per chain; ETH mempool signal | `PHOENIX_METRIC`, `PHOENIX_ETH_SIGNAL` |
-| **L3 — chain / sequencer** | revert ratio, sequencer health, volume delta | `PHOENIX_L2_HEALTH`, `PHOENIX_VOLUME_DELTA` |
+| **L3 — chain / sequencer** | revert ratio from block receipts (Arbitrum's ArbOS system tx excluded), where the failed txs went (top-contract share, distinct senders), head-block age (halted-chain detection), volume delta | `PHOENIX_L2_HEALTH`, `PHOENIX_VOLUME_DELTA` |
 | **Cross-layer** | 12×12 Pearson R_xy between chains (correlated failures) | `SILICON_DNA_CORRELATION` |
 
 The server writes ~1.2 GB/day of these records; a paid verdict is derived from them and signed (EIP-191, signer `0xdac8adC44f621bC3A56E9DC108d2F76Be3142294`) so it can be verified offline.
@@ -69,7 +77,7 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
 | Optimism | OP Stack | Linea | zkEVM |
 | zkSync | zkEVM | Blast | OP Stack |
 | Mode | OP Stack | Taiko | Based rollup |
-| Polygon zkEVM | zkEVM | **Casper** | L1 PoS |
+| Polygon zkEVM | zkEVM — **halted since Jul 3 2026**, reported `chain_halted` | **Casper** | L1 PoS |
 
 Casper is included as an L1 reference chain (L1 thresholds: stall ≥ 10 s, high latency > 2 s).
 
@@ -121,6 +129,16 @@ curl https://rtt.phoenix-ai.work/api/health
 | `GET /.well-known/x402` | x402 V2 agent discovery metadata |
 | `GET /api/v1/openapi.json` | OpenAPI 3.0 spec (all 9 endpoints) |
 
+## On-chain Registry on Arbitrum
+
+`PhoenixOracleRegistry` — [`0xD394fFAE51d8fB52187Cf3aE3b014Ddc80Dc7B15`](https://sepolia.arbiscan.io/address/0xD394fFAE51d8fB52187Cf3aE3b014Ddc80Dc7B15) on Arbitrum Sepolia. Source: [`contracts/PhoenixOracleRegistry.sol`](contracts/PhoenixOracleRegistry.sol) (Solidity ^0.8.20).
+
+- A publisher writes the live verdict on-chain **every 5 minutes** (800+ updates so far): Base p99 latency, revert ratio (bps), risk level (SAFE / ELEVATED / HIGH / STALL), timestamp, Base block number.
+- Smart contracts read it directly: `isSafe()`, `riskLabel()`, `latest()`, `updateCount()`; event `SnapshotPublished`.
+- Access control: only the owner or the designated oracle address may publish (`setOracle`, `transferOwnership`).
+- The publisher runs inside a BPF LSM kernel sandbox (no new executables; outbound only to DNS / HTTPS / RPC ports).
+- The contract is chain-agnostic Solidity — deployable to any EVM chain; a Casper oracle contract exists as well.
+
 ## Components
 
 | Component | File | Description |
@@ -141,11 +159,11 @@ curl https://rtt.phoenix-ai.work/api/health
 
 eBPF XDP program (`prog id 6293`) on `eth0` drops malicious packets before the TCP stack (~5-20µs on virtio_net generic mode). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
 
-### LSM Agent Guard (loader running; target service configurable)
+### LSM Agent Guard (live: guards the Arbitrum registry publisher)
 
-BPF LSM program (kernel boot `lsm=landlock,lockdown,yama,integrity,apparmor,bpf`). Sandboxes the service named in `LSM_TARGET_SERVICE` (the original target, `casper-agent`, has been retired; no service is currently attached):
+BPF LSM program (kernel boot `lsm=landlock,lockdown,yama,integrity,apparmor,bpf`). Sandboxes the service named in `LSM_TARGET_SERVICE` — currently `phoenix-arb-publisher`, which keeps publishing on-chain under the guard (verified by an on-chain publish):
 - **Block execve** — agent can't spawn child processes
-- **Restrict connect** — only ports 443 (HTTPS) and 8545 (RPC)
+- **Restrict connect** — only ports 53 (DNS), 443 (HTTPS), 8545 and 7777 (RPC)
 - **File access** — limited to agent's working directory
 
 ## MCP Server (AI Agent Discovery)
@@ -235,10 +253,9 @@ curl localhost:3002/                  # → service info
 
 ## Test Suite
 
-- **Main repo:** 34 test files, 682 passed, 0 failed, 1 skipped
-- **Hackathon repo:** 3 test suites, 31 passed (gateway 21 + MCP server 10)
-- **Python tests:** 69 passed (XDP 19 + LSM 31 + sensor 19)
-- **Total: 714+ tests**
+- **Main repo:** 758 TypeScript + 126 Python automated tests passing (Oct 3 2026)
+- **This repo:** gateway 21 + MCP server 10
+- Every production release is verified by sha256 against git, checked live (including a forged-payment test) and rolled back automatically on failure.
 
 ## Verified Revenue
 
