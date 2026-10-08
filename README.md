@@ -139,6 +139,20 @@ curl https://rtt.phoenix-ai.work/api/health
 - The publisher runs inside a BPF LSM kernel sandbox (no new executables; outbound only to DNS / HTTPS / RPC ports).
 - The contract is chain-agnostic Solidity — deployable to any EVM chain; a Casper oracle contract exists as well.
 
+## Caller label and agent passport
+
+Every response of the paid gateway (`/v1/*`, both 402 and 200) carries a label for the **caller**:
+`X-Silicon-DNA-Class` (HUMAN / LEGIT_AGENT / MALICIOUS_BOT / SYBIL), `-Confidence`, `-Layers` (passed/14), `-Layers-Applicable`,
+`-Timing-Intervals`, `-Timing` (insufficient / human_like / agent_like / bot_like), `-Paid` (settled payments of this caller), `-Passport`.
+The label never blocks a request: a bot-like caller still receives the normal 402, so directories that list the oracle keep seeing the payment terms.
+
+`GET /api/agent/passport` returns the full passport with an **Ed25519 signature**. Verify it without trusting the server: take `signed_payload`
+and `signature_ed25519` from the answer and the public key from `/.well-known/silicon-dna-key.json` (the page explains the check in Node and Python).
+The `payment` block comes from settlements confirmed by the x402 facilitator.
+
+**Honest limit:** the timing layers (L3, L4, L6, L7) need ≥ 20 request intervals from the same caller. Most API callers make fewer, so their
+class rests on headers and request rate until enough history accumulates (measured 8 Oct 2026: 2 of 30 outside callers had ≥ 20 intervals).
+
 ## Components
 
 | Component | File | Description |
@@ -157,7 +171,7 @@ curl https://rtt.phoenix-ai.work/api/health
 
 ### XDP Threat Filter (LIVE since Aug 28, 2026)
 
-eBPF XDP program (`prog id 6293`) on `eth0` drops malicious packets before the TCP stack (~5-20µs on virtio_net generic mode). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
+eBPF XDP program (`prog id 6293`) on `eth0` drops malicious packets before the TCP stack (run time of the XDP program: 927 ns per packet on average (measured 8 Oct 2026 with the kernel's BPF run counters, generic mode on virtio_net)). Silicon DNA's 14-layer bot detection feeds the BPF map every 5 seconds.
 
 ### LSM Agent Guard (live: guards the Arbitrum registry publisher)
 
@@ -253,7 +267,7 @@ curl localhost:3002/                  # → service info
 
 ## Test Suite
 
-- **Main repo:** 758 TypeScript + 126 Python automated tests passing (Oct 3 2026)
+- **Main repo:** 855 TypeScript + 190 Python automated tests (Oct 8 2026) passing
 - **This repo:** gateway 21 + MCP server 10
 - Every production release is verified by sha256 against git, checked live (including a forged-payment test) and rolled back automatically on failure.
 
