@@ -250,7 +250,7 @@ Supported chains: `base`, `arbitrum`, `optimism`, `zksync`, `scroll`, `mantle`, 
 Runs the x402 gateway locally. Real-time telemetry comes from the production server at `rtt.phoenix-ai.work`.
 
 ```bash
-cp .env.example .env   # edit with your CDP/Hedera keys
+cp .env.example .env   # works as is (x402.org facilitator, Base Sepolia); add CDP keys for Base mainnet
 docker compose up
 curl -i localhost:3002/v1/safe       # → 402 Payment Required
 curl localhost:3002/                  # → service info

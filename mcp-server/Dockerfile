@@ -3,6 +3,8 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
+# npm 10 (bundled with node:22) fails to resolve this dependency tree ("reading 'edgesOut'"); npm 11 resolves it.
+RUN npm install -g npm@11.21.1 --no-audit --no-fund
 COPY package.json ./
 RUN npm install --no-audit --no-fund
 
@@ -14,6 +16,7 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN npm install -g npm@11.21.1 --no-audit --no-fund
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund \
  && npm cache clean --force
