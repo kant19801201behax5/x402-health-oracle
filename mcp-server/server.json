@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.kant19801201behax5/phoenix-mcp-server",
   "title": "Phoenix Zero — Execution Oracle for L2s",
-  "description": "Before sending a transaction on an L2: PASS/FAIL for the chosen chain. Free verdict delayed ~60 s, no revert ratio; live verdict via x402.",
+  "description": "Pre-transaction PASS/FAIL for an L2. Free verdict delayed ~60 s, no revert ratio; live via x402.",
   "repository": {
     "url": "https://github.com/kant19801201behax5/x402-health-oracle",
     "source": "github"

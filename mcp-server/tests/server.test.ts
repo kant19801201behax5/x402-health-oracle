@@ -108,6 +108,7 @@ describe("server.json manifest", () => {
     expect(manifest.packages[0].version).toBe("1.3.1");
     expect(manifest.tools.map((t: any) => t.name)).toEqual(["check_safety_free", "preflight_network_health"]);
     expect(manifest.repository.url).toContain("x402-health-oracle");
+    expect(manifest.description.length).toBeLessThanOrEqual(100); // MCP registry rejects longer (422)
     for (const tool of manifest.tools) expect(tool.annotations.readOnlyHint).toBe(true);
   });
   it("manifest descriptions do not state a fixed price and do not promise DEGRADED", async () => {
