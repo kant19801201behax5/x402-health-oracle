@@ -2,18 +2,18 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.kant19801201behax5/phoenix-mcp-server",
   "title": "Phoenix Zero — Execution Oracle for L2s",
-  "description": "Before sending a transaction on an L2: PASS/DEGRADED/FAIL for the chosen chain from per-chain measurements (every ~2 s, 2-3 RPC nodes). Free delayed verdict; live data via x402.",
+  "description": "Before sending a transaction on an L2: PASS/FAIL for the chosen chain. Free verdict delayed ~60 s, no revert ratio; live verdict via x402.",
   "repository": {
     "url": "https://github.com/kant19801201behax5/x402-health-oracle",
     "source": "github"
   },
-  "version": "1.3.0",
+  "version": "1.3.1",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "phoenix-mcp-server",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "transport": {
         "type": "stdio"
       }
@@ -22,7 +22,7 @@
   "tools": [
     {
       "name": "check_safety_free",
-      "description": "FREE safety check for an L2 (100 calls/IP/day): safe/unsafe with reason for the chosen chain, delayed ~60 s. Live verdict: paid x402 GET /api/v1/safe.",
+      "description": "FREE safety check for an L2 (100 calls/IP/day): `safe` true/false plus a `reason` code (`safe` is null only with `warming_up`) for the chosen chain, delayed ~60 s. Live verdict: paid x402 GET /api/v1/safe.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -32,7 +32,7 @@
     },
     {
       "name": "preflight_network_health",
-      "description": "PASS/DEGRADED/FAIL for the chosen L2 from its own measurements (latency across 2-3 RPC nodes every ~2 s; revert ratio for Base/Arbitrum). Free answer delayed ~60 s; live latency/revert_ratio via x402 ($0.01 USDC on Base, Polygon or Arbitrum).",
+      "description": "PASS/FAIL for the chosen L2 (chain halt, sequencer stall, latency; latency sampled every ~2 s on 2-3 RPC nodes). Free answer delayed ~60 s, without revert ratio. Live verdict with revert ratio (Base/Arbitrum) via x402 from $0.01 USDC (the 402 offers USDC on Base, Polygon or Arbitrum).",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

@@ -47,14 +47,14 @@ const text = (obj: unknown, isError = false) => ({
 
 export const server = new McpServer({
   name: "phoenix-zero",
-  version: "1.3.0",
+  version: "1.3.1",
 });
 
 server.registerTool(
   "check_safety_free",
   {
     description:
-      "FREE safety check for an L2 before sending a transaction (100 calls/IP/day). Returns safe/unsafe with a reason code for the chosen chain. The verdict is delayed ~60 s; the live verdict is the paid x402 endpoint GET /api/v1/safe ($0.01 USDC).",
+      "FREE safety check for an L2 before sending a transaction (100 calls/IP/day). Returns `safe` true/false plus a `reason` code (`safe` is null only with `warming_up`) for the chosen chain. The verdict is delayed ~60 s; the live verdict is the paid x402 endpoint GET /api/v1/safe (from $0.01 USDC).",
     inputSchema: {
       chain: z.enum(CHAINS).optional().describe("L2 chain to check. Defaults to base."),
     },
@@ -73,13 +73,13 @@ server.registerTool(
   "preflight_network_health",
   {
     description:
-      "Decide whether an L2 is suitable for transaction execution right now: PASS / DEGRADED / FAIL for the chosen chain, from Phoenix Zero measurements (each chain polled every ~2 s against 2-3 independent RPC nodes; revert ratio for Base/Arbitrum; records signed BLAKE3+Ed25519). The free answer is delayed ~60 s; live data (p99 latency, revert ratio) is paid via x402 ($0.01 USDC on Base, Polygon or Arbitrum).",
+      "Decide whether an L2 is suitable for sending a transaction: PASS or FAIL with a reason code for the chosen chain, from Phoenix Zero measurements (each chain polled every ~2 s against 2-3 independent RPC nodes, Casper 10; feed records signed BLAKE3+Ed25519, responses signed EIP-191). The free answer is delayed ~60 s and checks chain halt, sequencer stall and latency only: it does not include revert ratio, so it never returns DEGRADED. The live verdict with revert ratio (Base/Arbitrum) and p99 latency is paid via x402 from $0.01 USDC (the 402 offers USDC on Base, Polygon or Arbitrum).",
     inputSchema: {
       chain: z.enum(CHAINS).optional().describe("L2 chain to check. Defaults to base."),
       metric: z
         .enum(["health_check", "latency", "revert_ratio"])
         .default("health_check")
-        .describe("health_check = free delayed PASS/DEGRADED/FAIL. latency / revert_ratio = live values via paid x402 endpoints."),
+        .describe("health_check = free delayed PASS/FAIL (no revert ratio). latency / revert_ratio = live values via paid x402 endpoints. revert_ratio: Base and Arbitrum only."),
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
@@ -97,13 +97,13 @@ server.registerTool(
         source: "rtt.phoenix-ai.work",
       };
       if (metric === "health_check") {
-        return text({ ...base, live_verdict: `GET ${PHOENIX_BASE}/api/v1/safe?chain=${c} (x402, $0.01 USDC)` });
+        return text({ ...base, live_verdict: `GET ${PHOENIX_BASE}/api/v1/safe?chain=${c} (x402, from $0.01 USDC)` });
       }
       return text({
         ...base,
         metric_requested: metric,
         requires_payment: true,
-        price: "$0.01 USDC",
+        price: "from $0.01 USDC (up to $0.10 under stress; see PAYMENT-REQUIRED)",
         endpoint: metric === "latency" ? `${PHOENIX_BASE}/api/v1/chains/${c}` : `${PHOENIX_BASE}/api/v1/safe?chain=${c}`,
         payment_protocol: "x402 v2 (HTTP 402; terms in the PAYMENT-REQUIRED header and the response body)",
         payment_rails: PAYMENT_RAILS,
