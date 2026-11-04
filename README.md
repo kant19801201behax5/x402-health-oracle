@@ -12,9 +12,9 @@ Live: `https://rtt.phoenix-ai.work` | npm: [`phoenix-mcp-server`](https://www.np
 
 ## Problem
 
-AI agents making autonomous on-chain transactions have no way to check network health before committing funds. 64% of DeFi protocols don't verify sequencer health. Base went down for 2 hours in June 2026 with $10.95B at risk.
+AI agents making autonomous on-chain transactions have no way to check network health before committing funds.
 
-Existing solutions (Chainlink L2 Sequencer Feed) give binary up/down with 30-second OCR updates. Agents need nanosecond-precision RTT, revert ratios, and stall detection — **before** signing a transaction.
+Sequencer-uptime feeds (for example Chainlink's L2 Sequencer Uptime Feed) answer up or down. Agents also need round-trip time, revert ratios and stall detection — **before** signing a transaction.
 
 **What you actually buy:** network delay is visible here *before* it hits you. If a sequencer is stalling or RPC latency is spiking, your swap, bridge or x402 payment will arrive late — or not at all. Phoenix measures that delay right now and answers *act now / wait / route elsewhere*.
 
@@ -59,7 +59,7 @@ Agent ──────────────┼── Olas Mech (DeFi/arbitr
 | Channel | Status | How agents find us |
 |---------|--------|-------------------|
 | **MCP Registry** | **Published** | `io.github.kant19801201behax5/phoenix-mcp-server` — tools `check_safety_free`, `preflight_network_health` |
-| **MCP Discovery** | **Live** | `/.well-known/mcp.json` — 5 tools (1 free + 4 paid) for LLM agent auto-discovery |
+| **MCP Discovery** | **Live** | `/.well-known/mcp.json` — 2 MCP tools (the tools of the npm server) plus 4 paid HTTP endpoints under `http_tools`, for LLM agent auto-discovery |
 | **npm SDK** | **Published** | `phoenix-zero-preflight` (also `@phoenix-zero/preflight`) — 3-line integration with `createPhoenixTool()` for AgentKit/LangChain |
 | **Olas Mech** | **Code ready** (on-chain registration pending) | Mech marketplace tool interface |
 | **Direct x402** | **Live** | Any agent calls `rtt.phoenix-ai.work` with x402 payment |
@@ -86,8 +86,8 @@ Casper is included as an L1 reference chain (L1 thresholds: stall ≥ 10 s, high
 | Network | Facilitator | Status |
 |---------|-------------|--------|
 | Base mainnet (`eip155:8453`) | Coinbase CDP | **Live** — USDC settled on-chain |
-| Polygon (`eip155:137`) | Coinbase CDP | **Live** |
-| Arbitrum One (`eip155:42161`) | Coinbase CDP | **Live** |
+| Polygon (`eip155:137`) | Coinbase CDP | Offered in the 402; no settled payment yet |
+| Arbitrum One (`eip155:42161`) | Coinbase CDP | **Live** - 1 external payment settled on-chain (24 Oct 2026) |
 | Hedera testnet | Blocky402 | **Integrated** (testnet) |
 
 Every 402 response carries the x402 v2 `PAYMENT-REQUIRED` header **and** the same `x402Version`/`accepts` in the JSON body.
@@ -125,15 +125,15 @@ curl https://rtt.phoenix-ai.work/api/health
 | `GET /api/v1/demo/safe` | Safety verdict **delayed 60 s** (100/day/IP) — `{safe, reason, chain, demo: true, delayed_s, as_of, teaser}` |
 | `GET /api/v1/price` | Current price and surge multiplier (no verdict) |
 | `GET /api/health` | Node health status |
-| `GET /.well-known/mcp.json` | MCP 1.0 tool discovery (5 tools) |
+| `GET /.well-known/mcp.json` | MCP 1.0 tool discovery (2 MCP tools + 4 paid HTTP endpoints) |
 | `GET /.well-known/x402` | x402 V2 agent discovery metadata |
-| `GET /api/v1/openapi.json` | OpenAPI 3.0 spec (all 9 endpoints) |
+| `GET /api/v1/openapi.json` | OpenAPI 3.0 spec (paid operations carry a 402 response and `x-payment-info`) |
 
 ## On-chain Registry on Arbitrum
 
 `PhoenixOracleRegistry` — [`0xD394fFAE51d8fB52187Cf3aE3b014Ddc80Dc7B15`](https://sepolia.arbiscan.io/address/0xD394fFAE51d8fB52187Cf3aE3b014Ddc80Dc7B15) on Arbitrum Sepolia. Source: [`contracts/PhoenixOracleRegistry.sol`](contracts/PhoenixOracleRegistry.sol) (Solidity ^0.8.20).
 
-- A publisher writes the live verdict on-chain **every 5 minutes** (800+ updates so far): Base p99 latency, revert ratio (bps), risk level (SAFE / ELEVATED / HIGH / STALL), timestamp, Base block number.
+- A publisher writes the live verdict on-chain **every 5 minutes** (more than 10,000 updates by 4 Nov 2026): Base p99 latency, revert ratio (bps), risk level (SAFE / ELEVATED / HIGH / STALL), timestamp, Base block number.
 - Smart contracts read it directly: `isSafe()`, `riskLabel()`, `latest()`, `updateCount()`; event `SnapshotPublished`.
 - Access control: only the owner or the designated oracle address may publish (`setOracle`, `transferOwnership`).
 - The publisher runs inside a BPF LSM kernel sandbox (no new executables; outbound only to DNS / HTTPS / RPC ports).
@@ -267,22 +267,22 @@ curl localhost:3002/                  # → service info
 
 ## Test Suite
 
-- **Main repo:** 855 TypeScript + 190 Python automated tests (Oct 8 2026) passing
+- **Main repo:** over 1,000 TypeScript and over 700 Python automated tests, passing in CI (4 Nov 2026)
 - **This repo:** gateway 21 + MCP server 10
 - Every production release is verified by sha256 against git, checked live (including a forged-payment test) and rolled back automatically on failure.
 
 ## Verified Revenue
 
-External (non-owner) x402 settlements on Base mainnet: **$0.03 USDC** (own test payments excluded). Verify on-chain:
+External (non-owner) x402 settlements, 10 Oct - 4 Nov 2026: **25 payments of 0.01 USDC = $0.25** from 11 wallets (24 on Base, 1 on Arbitrum One); own test payments excluded; some of the 11 wallets may be automated directory checks. Each payment was checked on-chain (USDC Transfer to PAY_TO). Verify on-chain:
 - PAY_TO: `0xbb967F16C7f3e9B4c1626680684445d41dBE44Ab`
 
 ## Continuity
 
-This project extends 6+ months of production work (since March 2026). Server uptime 170+ days. 14 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
+This project extends 6+ months of production work (since March 2026). 14 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
 
 ## Paper
 
-Silicon DNA: The Physics of Network Identity Verification
+Cross-Chain Temporal Correlation and Kernel-Level Enforcement for Layer-2 Bot Detection (preprint, CC BY 4.0, Zenodo version 2.0, September 2026)
 DOI: [10.5281/zenodo.22239862](https://doi.org/10.5281/zenodo.22239862)
 
 ## License
