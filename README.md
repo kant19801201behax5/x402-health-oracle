@@ -12,9 +12,9 @@ Live: `https://rtt.phoenix-ai.work` | npm: [`phoenix-mcp-server`](https://www.np
 
 ## Problem
 
-AI agents making autonomous on-chain transactions have no way to check network health before committing funds.
+AI agents making autonomous on-chain transactions have no way to check network health before committing funds. 64% of DeFi protocols don't verify sequencer health. In June 2026 Base stopped producing blocks for 116 minutes (25 June) and again for 20 minutes the next day; L2Beat showed just under $11 billion of value secured on it ([Cointelegraph](https://cointelegraph.com/news/base-post-mortem-reveals-sequencer-bug-behind-back-to-back-outages)).
 
-Sequencer-uptime feeds (for example Chainlink's L2 Sequencer Uptime Feed) answer up or down. Agents also need round-trip time, revert ratios and stall detection — **before** signing a transaction.
+Existing solutions (Chainlink L2 Sequencer Feed) give binary up/down with 30-second OCR updates. Agents need nanosecond-precision RTT, revert ratios, and stall detection — **before** signing a transaction.
 
 **What you actually buy:** network delay is visible here *before* it hits you. If a sequencer is stalling or RPC latency is spiking, your swap, bridge or x402 payment will arrive late — or not at all. Phoenix measures that delay right now and answers *act now / wait / route elsewhere*.
 
@@ -278,7 +278,7 @@ External (non-owner) x402 settlements, 10 Oct - 4 Nov 2026: **25 payments of 0.0
 
 ## Continuity
 
-This project extends 6+ months of production work (since March 2026). 14 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
+This project extends 6+ months of production work (since March 2026). Server uptime 170+ days. 14 production services on DigitalOcean. See [CONTINUITY_PROOF.md](CONTINUITY_PROOF.md).
 
 ## Paper
 
